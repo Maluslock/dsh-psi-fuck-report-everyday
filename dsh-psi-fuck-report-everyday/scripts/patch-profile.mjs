@@ -21,6 +21,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
 const DEP = `link:${ROOT}`
 const BLOCK = ['- insert:', `    - id: ${ID}`, `      name: ${ID}`].join('\n')
+const EMPTY_ARRAY_RE = /^[ \t]*\[\][ \t]*(#.*)?$/
 
 function fail(message) {
   console.error(`[patch-profile] ${message}`)
@@ -92,6 +93,30 @@ function editPackageJson(profileDir, action) {
   console.log(`[patch-profile] dependencies 中没有 ${ID}，跳过`)
 }
 
+/**
+ * A freshly generated profile ships `cordis.patch.yml` as a top-level empty
+ * array (`[]`), optionally after comments. Appending a sequence item after
+ * that marker produces invalid YAML, so the marker line is dropped first.
+ * Returns null when the document has content that is not just an empty root.
+ */
+function stripEmptyRoot(text) {
+  const lines = text.split(/\r?\n/)
+  let marker = -1
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    if (!EMPTY_ARRAY_RE.test(line) || marker !== -1) return null
+    marker = i
+  }
+  if (marker === -1) return null
+  const inline = EMPTY_ARRAY_RE.exec(lines[marker])?.[1]
+  const kept = lines.slice(0, marker)
+  if (inline) kept.push(inline)
+  kept.push(...lines.slice(marker + 1))
+  return kept.join('\n')
+}
+
 function editCordisPatch(profileDir, action) {
   const path = join(profileDir, 'cordis.patch.yml')
   const exists = existsSync(path)
@@ -107,7 +132,7 @@ function editCordisPatch(profileDir, action) {
       console.log(`[patch-profile] cordis.patch.yml 已含 ${ID} 行，跳过挂载项`)
       return
     }
-    const base = text.replace(/\s+$/, '')
+    const base = (stripEmptyRoot(text) ?? text).replace(/\s+$/, '')
     const next = `${base ? `${base}\n\n` : ''}${BLOCK}\n`
     writeAtomic(path, next)
     console.log(`[patch-profile] cordis.patch.yml 已追加 ${ID} 挂载项`)
@@ -122,12 +147,13 @@ function editCordisPatch(profileDir, action) {
     }
     return
   }
-  const next = text
+  const trimmed = text
     .replace(`${BLOCK}\n`, '')
     .replace(`${BLOCK}`, '')
-    .replace(/\n{3,}$/, '\n')
     .replace(/^\n+/, '')
-  writeAtomic(path, next)
+    .replace(/\s+$/, '')
+  const hasContent = trimmed.split('\n').some((line) => line.trim() && !line.trim().startsWith('#'))
+  writeAtomic(path, hasContent ? `${trimmed}\n` : '[]\n')
   console.log(`[patch-profile] cordis.patch.yml 已移除 ${ID} 挂载项`)
 }
 

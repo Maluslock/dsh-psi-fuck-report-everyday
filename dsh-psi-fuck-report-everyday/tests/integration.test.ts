@@ -212,7 +212,7 @@ describe('integration: report flow', () => {
     const weeklyPayload = parse<{
       weekly: { week: string; days: string[]; missingDays: string[]; sections: { done: string[] } }
       paths: { json: string; markdown?: string }
-      archive?: { committed: boolean; reason?: string }
+      archive?: { committed: boolean; reason?: string; committedAt?: string }
     }>(weekly)
     expect(weeklyPayload.weekly.week).toBe(WEEK)
     expect(weeklyPayload.weekly.days).toEqual([DATE])
@@ -226,7 +226,8 @@ describe('integration: report flow', () => {
     expect(weeklyPayload.weekly.sections.done).toEqual(['完成登录修复'])
 
     // 无 Git 仓库：自动归档返回 no-git 而不失败（AC-11 的无 Git 分支）。
-    expect(weeklyPayload.archive).toEqual({ committed: false, reason: 'no-git' })
+    expect(weeklyPayload.archive).toMatchObject({ committed: false, reason: 'no-git' })
+    expect(weeklyPayload.archive!.committedAt).toEqual(expect.any(String))
     expect(await exists(weeklyPayload.paths.json)).toBe(true)
     const weeklyMarkdownPath = join(outputDir, `${WEEK}-周报.md`)
     expect(weeklyPayload.paths.markdown).toBe(weeklyMarkdownPath)

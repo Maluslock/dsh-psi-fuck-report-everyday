@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import { PluginError, isPluginError } from './errors.js'
 import { dailyMarkdown, weeklyMarkdown } from './markdown.js'
 import { DEFAULT_SETTINGS, mergeSettings } from './settings.js'
-import type { DailyReport, Sections, Settings, WeeklyReport } from './types.js'
+import type { DailyReport, Sections, Settings, WeeklyArchive, WeeklyReport } from './types.js'
 
 /** 把设置里的 `~` 展开成用户目录；只处理开头的 `~` / `~/`，其余原样返回。 */
 export function expandHome(path: string): string {
@@ -143,6 +143,18 @@ export class ReportStore {
     const markdown = join(this.options.outputDir, `${next.week}-周报.md`)
     await atomicWrite(markdown, weeklyMarkdown(next))
     return { json, markdown }
+  }
+
+  /**
+   * 只回写归档状态：读取现有周报并原子写回，保留 sections/editedAt/history/days 等字段，
+   * 不 push history，也不重写 Markdown（归档状态不参与 Markdown 渲染）。
+   * 周报不存在时返回 false，供 /commit 在没有周报的周上安全跳过。
+   */
+  async setWeeklyArchive(week: string, archive: WeeklyArchive): Promise<boolean> {
+    const report = await this.readWeekly(week)
+    if (!report) return false
+    await atomicWrite(this.weeklyPath(week), `${JSON.stringify({ ...report, archive }, null, 2)}\n`)
+    return true
   }
 
   async saveDraft(input: DraftInput): Promise<{ json: string; markdown?: string }> {

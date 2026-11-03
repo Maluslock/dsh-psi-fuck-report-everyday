@@ -289,6 +289,26 @@
         return map[reason] || String(reason || '未知原因')
       }
 
+      /** /state 顶层 archive 优先；旧宿主或旧周报文件没有时退回 weekly.archive。 */
+      function archiveFromState(state) {
+        if (!state || typeof state !== 'object') return null
+        if (state.archive && typeof state.archive === 'object') return state.archive
+        if (state.weekly && typeof state.weekly === 'object'
+          && state.weekly.archive && typeof state.weekly.archive === 'object') {
+          return state.weekly.archive
+        }
+        return null
+      }
+
+      function archiveText(archive) {
+        if (!archive) return '未提交'
+        if (archive.committed) {
+          var hash = shortHash(archive.hash)
+          return hash ? '已本地提交 ' + hash : '已本地提交'
+        }
+        return '未提交（' + archiveReason(archive.reason) + '）'
+      }
+
       // -------------------------------------------------------------------
       // HTTP：所有数据都来自宿主接口
       // -------------------------------------------------------------------
@@ -1283,10 +1303,15 @@
         var errorPair = useState('')
         var error = errorPair[0]
         var setError = errorPair[1]
-        var archivePair = useState(null)
+        var archivePair = useState(function () { return archiveFromState(snap.state) })
         var archive = archivePair[0]
         var setArchive = archivePair[1]
         var stage = useStagedProgress(busy === 'week', WEEK_STAGES)
+
+        // 刷新或宿主状态更新后，用 /state 的归档状态重新初始化本周页。
+        useEffect(function () {
+          setArchive(archiveFromState(snap.state))
+        }, [snap.revision])
 
         useEffect(function () {
           var cancelled = false
@@ -1317,7 +1342,7 @@
           setNotice('')
           request('/generate-week', { method: 'POST', body: { week: week } }).then(function (data) {
             setBusy('')
-            setArchive(data.archive || null)
+            setArchive(archiveFromState(data))
             var missing = data.weekly && data.weekly.missingDays ? data.weekly.missingDays.length : 0
             setNotice('周报已生成' + (missing ? '，缺 ' + missing + ' 天日报' : '') + '，写入 ' + ((data.paths && data.paths.markdown) || (data.paths && data.paths.json) || '报告目录'))
             store.refresh()
@@ -1369,23 +1394,17 @@
           setNotice('')
           request('/commit', { method: 'POST', body: { week: week } }).then(function (data) {
             setBusy('')
-            setArchive({
-              committed: Boolean(data.committed),
-              hash: data.hash,
-              reason: data.reason,
-            })
-            setNotice(data.committed ? '已本地提交 ' + shortHash(data.hash) : '未提交：' + archiveReason(data.reason))
+            var nextArchive = archiveFromState(data)
+            setArchive(nextArchive)
+            setNotice(archiveText(nextArchive))
+            // 让 /state 也带上刚回写的 archive，其它订阅者（今日页/横幅）同步刷新。
+            store.refresh()
           }).catch(function (failure) {
             setBusy('')
             setError(failure.message)
           })
         }
 
-        var archiveText = archive
-          ? archive.committed
-            ? '已本地提交 ' + shortHash(archive.hash)
-            : '未提交（' + archiveReason(archive.reason) + '）'
-          : '未提交'
         var missing = weekly && weekly.missingDays ? weekly.missingDays : []
 
         return h('div', { style: STYLES.stack },
@@ -1469,7 +1488,7 @@
           h('div', { style: STYLES.card },
             h('div', { style: STYLES.row },
               h('span', { style: STYLES.label }, '归档'),
-              h('span', { style: archive && archive.committed ? STYLES.statusOk : STYLES.statusIdle }, archiveText),
+              h('span', { style: archive && archive.committed ? STYLES.statusOk : STYLES.statusIdle }, archiveText(archive)),
               h('span', { style: { flex: 1 } }),
               h('button', {
                 type: 'button',
@@ -1824,6 +1843,8 @@
         formToSettings: formToSettings,
         formToSections: formToSections,
         archiveReason: archiveReason,
+        archiveFromState: archiveFromState,
+        archiveText: archiveText,
         shortHash: shortHash,
         MAX_SNOOZE: MAX_SNOOZE,
       }

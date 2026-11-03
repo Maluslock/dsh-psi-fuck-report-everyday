@@ -209,6 +209,34 @@ describe('ReportStore', () => {
     expect((error as PluginError).code).toBe('E_BAD_REQUEST')
   })
 
+  it('persists the weekly archive without touching sections, edits or history', async () => {
+    const { store } = await makeStore()
+    const report = weekly()
+    report.editedAt = '2026-11-06T18:00:00+08:00'
+    report.history = [{ done: ['更早的完成项'], risks: [] }]
+    await store.writeWeekly(report)
+
+    const archive = {
+      committed: true,
+      hash: 'abc1234',
+      committedAt: '2026-11-06T18:05:00+08:00',
+    }
+    expect(await store.setWeeklyArchive('2026-W45', archive)).toBe(true)
+
+    const stored = await store.readWeekly('2026-W45')
+    expect(stored!.archive).toEqual(archive)
+    expect(stored!.sections).toEqual(report.sections)
+    expect(stored!.editedAt).toBe(report.editedAt)
+    expect(stored!.history).toEqual(report.history)
+    expect(stored!.days).toEqual(report.days)
+    expect(stored!.missingDays).toEqual(report.missingDays)
+    expect(stored!.generatedAt).toBe(report.generatedAt)
+
+    // 没有周报文件的周只返回 false，不凭空创建 JSON。
+    expect(await store.setWeeklyArchive('2026-W46', archive)).toBe(false)
+    expect(await store.readWeekly('2026-W46')).toBeNull()
+  })
+
   it('reports corrupted report files as plugin errors', async () => {
     const { store, dataDir } = await makeStore()
     await mkdir(join(dataDir, 'daily'), { recursive: true })

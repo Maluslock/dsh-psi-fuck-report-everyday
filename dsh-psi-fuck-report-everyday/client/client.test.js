@@ -50,6 +50,8 @@ const {
   formToSections,
   shortHash,
   archiveReason,
+  archiveFromState,
+  archiveText,
   MAX_SNOOZE,
 } = client.__test
 
@@ -285,6 +287,28 @@ test('归档原因与短 hash', function () {
   assert.equal(archiveReason('no-change'), '没有变更')
   assert.equal(archiveReason('merge'), '存在合并冲突，需手动处理')
   assert.equal(archiveReason('whatever'), 'whatever')
+})
+
+test('本周页从 /state.archive 恢复归档状态并生成文案', function () {
+  const committed = {
+    committed: true,
+    hash: 'abcdef1234567',
+    committedAt: '2026-11-06T18:05:00+08:00',
+  }
+  // 顶层 archive 优先；旧宿主只有 weekly.archive 时也能恢复。
+  assert.deepEqual(
+    archiveFromState({ archive: committed, weekly: { archive: { committed: false, reason: 'no-git' } } }),
+    committed,
+  )
+  assert.equal(archiveText(archiveFromState({ archive: committed, weekly: null })), '已本地提交 abcdef1')
+  assert.equal(
+    archiveText(archiveFromState({ weekly: { archive: { committed: false, reason: 'no-git' } } })),
+    '未提交（目录不在 Git 仓库）',
+  )
+  assert.equal(archiveText(archiveFromState({ weekly: null })), '未提交')
+  assert.equal(archiveText(archiveFromState(null)), '未提交')
+  // no-change 按「已归档」处理，但没有新 hash。
+  assert.equal(archiveText({ committed: true, reason: 'no-change' }), '已本地提交')
 })
 
 // ---------------------------------------------------------------------------

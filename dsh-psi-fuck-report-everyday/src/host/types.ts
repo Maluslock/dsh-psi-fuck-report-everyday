@@ -36,6 +36,13 @@ export interface DailyReport {
   history: Sections[]
 }
 
+export interface WeeklyArchive {
+  committed: boolean
+  hash?: string
+  reason?: string
+  committedAt: string
+}
+
 export interface WeeklyReport {
   version: 1
   week: string
@@ -46,6 +53,8 @@ export interface WeeklyReport {
   sections: Sections
   editedAt: string | null
   history: Sections[]
+  /** 最近一次本地归档结果；未归档或旧文件没有该字段时为 undefined。 */
+  archive?: WeeklyArchive
 }
 
 export interface Settings {

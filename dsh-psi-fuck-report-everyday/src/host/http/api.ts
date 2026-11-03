@@ -17,6 +17,7 @@ import type {
   Sections,
   Settings,
   SourceMeta,
+  WeeklyArchive,
   WeeklyReport,
 } from '../types.js'
 
@@ -32,6 +33,11 @@ export interface StoreLike {
     week?: string
     sections: Sections
   }): Promise<unknown>
+  /**
+   * 只回写归档状态。宿主装配尚未显式实现该可选方法时，api 会退回读改写，
+   * 行为等价（保留周报内容、不 push history）。
+   */
+  setWeeklyArchive?(week: string, archive: WeeklyArchive): Promise<boolean>
 }
 
 export interface ApiDeps {
@@ -143,7 +149,36 @@ async function buildWeek(week: string, deps: ApiDeps): Promise<WeekSource> {
 interface WeeklyOutcome {
   weekly: WeeklyReport
   paths: { json: string; markdown?: string }
-  archive?: { committed: boolean; hash?: string; reason?: string }
+  archive?: WeeklyArchive
+}
+
+/** archiveWeek 的 no-change 在语义上也是「已归档」，统一成前端可显示的状态。 */
+function toWeeklyArchive(result: { committed: boolean; hash?: string; reason?: string }): WeeklyArchive {
+  const archive: WeeklyArchive = {
+    committed: result.committed || result.reason === 'no-change',
+    committedAt: new Date().toISOString(),
+  }
+  if (result.hash) archive.hash = result.hash
+  if (result.reason) archive.reason = result.reason
+  return archive
+}
+
+/**
+ * 优先用存储的原子回写；上下文里的 DynamicStore 尚未显式实现该可选方法时，
+ * 退回「读现有周报 → 带 archive 写回」，同样保留 sections/history 且不 push history。
+ */
+async function persistWeeklyArchive(
+  store: StoreLike,
+  week: string,
+  archive: WeeklyArchive,
+): Promise<void> {
+  if (store.setWeeklyArchive) {
+    await store.setWeeklyArchive(week, archive)
+    return
+  }
+  const report = await store.readWeekly(week)
+  if (!report) return
+  await store.writeWeekly({ ...report, archive })
 }
 
 async function generateAndStoreWeek(
@@ -160,16 +195,23 @@ async function generateAndStoreWeek(
     missingDays,
   })
   const written = await deps.store.writeWeekly(report, { replace: true })
-  let archive: WeeklyOutcome['archive']
+  let archive: WeeklyArchive | undefined
   if (settings.weeklyCommit) {
     // 设置里的 outputDir 可能带 `~`，git 与 archiveWeek 都需要真实路径。
     const outputDir = expandHome(settings.outputDir)
     const repoRoot = await gitToplevel(outputDir)
-    archive = repoRoot
+    const result = repoRoot
       ? await archiveWeek({ repoRoot, outputDir, week })
       : { committed: false, reason: 'no-git' }
+    archive = toWeeklyArchive(result)
+    // 归档结果写回周报 JSON，刷新后本周页仍能显示真实的提交状态。
+    await persistWeeklyArchive(deps.store, week, archive)
   }
-  return { weekly: report, paths: written, archive }
+  return {
+    weekly: archive ? { ...report, archive } : report,
+    paths: written,
+    archive,
+  }
 }
 
 /**
@@ -195,12 +237,15 @@ export async function handleApi(request: ApiRequest, deps: ApiDeps): Promise<Api
       const date = str(url.searchParams.get('date')) ?? localDateKey(now)
       const daily = await deps.store.readDaily(date)
       const week = isoWeek(date)
+      const weekly = await deps.store.readWeekly(week)
       return json(200, {
         settings,
         date,
         daily,
         week,
-        weekly: await deps.store.readWeekly(week),
+        weekly,
+        // 顶层单独给出归档状态，客户端刷新时无需从 weekly 里猜。
+        archive: weekly?.archive ?? null,
         outputDir: settings.outputDir,
       })
     }
@@ -360,9 +405,21 @@ export async function handleApi(request: ApiRequest, deps: ApiDeps): Promise<Api
       const settings = await deps.settings.read()
       const outputDir = expandHome(settings.outputDir)
       const repoRoot = await gitToplevel(outputDir)
-      if (!repoRoot) return json(200, { ok: false, reason: 'no-git' })
+      if (!repoRoot) {
+        const archive = toWeeklyArchive({ committed: false, reason: 'no-git' })
+        await persistWeeklyArchive(deps.store, week, archive)
+        return json(200, { ok: false, committed: false, reason: 'no-git', archive })
+      }
       const result = await archiveWeek({ repoRoot, outputDir, week })
-      return json(200, { ok: result.committed || result.reason === 'no-change', ...result })
+      const archive = toWeeklyArchive(result)
+      await persistWeeklyArchive(deps.store, week, archive)
+      return json(200, {
+        ok: archive.committed,
+        committed: archive.committed,
+        ...(archive.hash ? { hash: archive.hash } : {}),
+        ...(archive.reason ? { reason: archive.reason } : {}),
+        archive,
+      })
     }
 
     return json(404, { error: { code: 'E_BAD_REQUEST', message: 'not found' } })

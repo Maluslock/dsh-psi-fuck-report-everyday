@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -11,6 +12,7 @@ import type { LlmLike, LlmStreamOptions } from '../src/host/report/llm'
 import { SessionCollector, type SessionQueryLike } from '../src/host/sessions/collector'
 import { mergeSettings } from '../src/host/settings'
 import { KeyedLock, ReportStore, SettingsStore } from '../src/host/store'
+import type { WeeklyArchive, WeeklyReport } from '../src/host/types'
 import {
   assistantEvent,
   fakeQuery,
@@ -96,17 +98,32 @@ afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!()
 })
 
+function git(repo: string, args: string[]): string {
+  return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim()
+}
+
 async function makeHarness(options: {
   llm?: LlmLike
   query?: SessionQueryLike
+  weeklyCommit?: boolean
+  git?: boolean
 } = {}): Promise<Harness> {
   const root = await mkdtemp(join(tmpdir(), 'eod-http-'))
   const dataDir = join(root, 'data')
-  const outputDir = join(root, 'out')
+  const repoRoot = join(root, 'repo')
+  const outputDir = options.git ? join(repoRoot, '工作日志') : join(root, 'out')
+  if (options.git) {
+    await mkdir(outputDir, { recursive: true })
+    git(repoRoot, ['init', '-q', '-b', 'main'])
+    git(repoRoot, ['config', 'user.name', 'EOD Test'])
+    git(repoRoot, ['config', 'user.email', 'eod@example.com'])
+    git(repoRoot, ['config', 'commit.gpgsign', 'false'])
+  }
+  const weeklyCommit = options.weeklyCommit ?? false
   const settings = new SettingsStore(dataDir)
-  // 把输出目录固定到临时目录、关闭 Git 归档，避免测试读写真实 HOME。
-  await settings.write(mergeSettings({ outputDir, weeklyCommit: false }))
-  const store = new ReportStore({ dataDir, outputDir, writeMarkdown: true, weeklyCommit: false })
+  // 把输出目录固定到临时目录（必要时临时 Git 仓库），避免测试读写真实 HOME。
+  await settings.write(mergeSettings({ outputDir, weeklyCommit }))
+  const store = new ReportStore({ dataDir, outputDir, writeMarkdown: true, weeklyCommit })
   const deps: ApiDeps = {
     settings,
     store,
@@ -404,6 +421,75 @@ describe('handleApi', () => {
     expect(download.body).toContain(`# ${WEEK} 周报`)
   })
 
+  it('persists the weekly archive so a state refresh still shows it', async () => {
+    const recorder = recordingLlm(DAILY_JSON, WEEKLY_JSON)
+    const harness = await makeHarness({ llm: recorder.llm, weeklyCommit: true })
+    await handleApi({ method: 'POST', url: `${API}/generate`, body: { date: DATE } }, harness.deps)
+
+    const generated = await handleApi(
+      { method: 'POST', url: `${API}/generate-week`, body: { week: WEEK } },
+      harness.deps,
+    )
+    expect(generated.status).toBe(200)
+    const payload = parse<{
+      weekly: { archive?: WeeklyArchive }
+      archive: WeeklyArchive
+      paths: { json: string }
+    }>(generated)
+    expect(payload.archive).toMatchObject({ committed: false, reason: 'no-git' })
+    expect(payload.archive.committedAt).toEqual(expect.any(String))
+    expect(payload.weekly.archive).toEqual(payload.archive)
+
+    // 刷新页面只会重新 GET /state；归档状态必须从落盘 JSON 恢复。
+    const state = parse<{
+      weekly: { archive?: WeeklyArchive }
+      archive: WeeklyArchive | null
+    }>(await handleApi({ method: 'GET', url: `${API}/state?date=${DATE}` }, harness.deps))
+    expect(state.archive).toEqual(payload.archive)
+    expect(state.weekly.archive).toEqual(payload.archive)
+    expect(JSON.parse(await readFile(payload.paths.json, 'utf8')).archive).toEqual(payload.archive)
+  })
+
+  it('persists the archive of a manual commit and returns it from state', async () => {
+    const harness = await makeHarness({ weeklyCommit: true, git: true })
+    const report: WeeklyReport = {
+      version: 1,
+      week: WEEK,
+      generatedAt: '2026-11-06T17:00:00+08:00',
+      model: { provider: 'deepseek-official', model: 'deepseek-flash' },
+      days: [DATE],
+      missingDays: ['2026-11-02', '2026-11-04', '2026-11-05', '2026-11-06'],
+      sections: { done: ['完成登录修复'], risks: [], next: [] },
+      editedAt: null,
+      history: [],
+    }
+    await harness.store.writeWeekly(report)
+
+    const committed = await handleApi(
+      { method: 'POST', url: `${API}/commit`, body: { week: WEEK } },
+      harness.deps,
+    )
+    expect(committed.status).toBe(200)
+    const payload = parse<{
+      ok: boolean
+      committed: boolean
+      hash?: string
+      archive: WeeklyArchive
+    }>(committed)
+    expect(payload.ok).toBe(true)
+    expect(payload.committed).toBe(true)
+    expect(payload.hash).toEqual(expect.any(String))
+    expect(payload.archive).toMatchObject({ committed: true, hash: payload.hash })
+    expect(payload.archive.committedAt).toEqual(expect.any(String))
+
+    const state = parse<{ archive: WeeklyArchive | null }>(
+      await handleApi({ method: 'GET', url: `${API}/state?date=${DATE}` }, harness.deps),
+    )
+    expect(state.archive).toEqual(payload.archive)
+    expect(JSON.parse(await readFile(harness.store.weeklyPath(WEEK), 'utf8')).archive)
+      .toEqual(payload.archive)
+  })
+
   it('reports E_NO_WEEKLY_SOURCE when no daily exists for the week', async () => {
     const harness = await makeHarness()
     const response = await handleApi(
@@ -421,7 +507,12 @@ describe('handleApi', () => {
       harness.deps,
     )
     expect(response.status).toBe(200)
-    expect(parse(response)).toMatchObject({ ok: false, reason: 'no-git' })
+    expect(parse(response)).toMatchObject({
+      ok: false,
+      committed: false,
+      reason: 'no-git',
+      archive: { committed: false, reason: 'no-git' },
+    })
   })
 
   it('maps a concurrent same-key generation to 409 E_LOCKED', async () => {

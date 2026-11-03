@@ -26,6 +26,7 @@
 ## 2. 非目标
 
 - 不自动提交公司日报系统，复制/提交动作由用户完成。
+- 不自动 push 笔记库到远端；如需备份，由用户手动推送。
 - 不支持多用户、团队共享、权限体系。
 - 不支持手机端或 DSH 页面关闭后的提醒（v1 明确限制）。
 - 不重新扫描整周原始会话来生成周报，只汇总已落盘的日报。
@@ -206,6 +207,7 @@
 - `[生成本周周报]`，生成中禁用。
 - 周报三节编辑框 + 复制/下载。
 - 显示覆盖天数与缺失天数。
+- 显示归档状态：「已本地提交 <短 hash>」/「未提交」，并提供 `[本地提交]` 按钮（只提交 `工作日志/` 路径，不推送）。
 
 ### 7.4 提醒
 
@@ -242,8 +244,9 @@
 | 提醒时间 | `17:30` | `HH:mm`，仅页面打开时生效 |
 | 周报星期 | 周五 | 1–7 |
 | 模型 | `deepseek-official/deepseek-flash` | provider/model 两个字段 |
-| 输出目录 | `~/日报` | 展开 `~`；不存在则创建 |
+| 输出目录 | `~/笔记/工作日志` | 展开 `~`；不存在则创建；可改回 `~/日报` |
 | 写 Markdown | 开 | 关闭后只存 JSON |
+| 周五本地提交 | 开 | 生成周报后把 `工作日志/` 提交到笔记库本地 Git，不推送；无 git 时跳过 |
 | 排除的工作区 | 空 | 多选，来自最近 7 天出现过的 cwd |
 | 数据清理 | 关闭 | 开启后启动时清理 365 天前的日报/周报 JSON |
 
@@ -263,12 +266,13 @@
 | PUT | `/settings` | 保存设置 | `{settings}` |
 | GET | `/download?kind=&date=` | 下载 Markdown | `text/markdown` |
 | POST | `/exclude` | 按天排除项目/会话 | `{ok}` |
+| POST | `/commit` | 手动本地提交本周工作日志 | `{ok, commit?, reason?}` |
 
 错误响应统一：`{error:{code,message,detail?}}`，HTTP 4xx/5xx。
 
 `PUT /draft` 请求体：`{kind:"daily"|"weekly", date?:"YYYY-MM-DD", week?:"YYYY-Www", sections:{done:[],risks:[],tomorrow?/next?:[]}}`。
 
-错误码：`E_COLLECT_FAILED`、`E_NO_SESSIONS`、`E_LLM_UNAVAILABLE`、`E_LLM_BAD_OUTPUT`、`E_NO_WEEKLY_SOURCE`、`E_LOCKED`、`E_WRITE_FAILED`、`E_BAD_REQUEST`。
+错误码：`E_COLLECT_FAILED`、`E_NO_SESSIONS`、`E_LLM_UNAVAILABLE`、`E_LLM_BAD_OUTPUT`、`E_NO_WEEKLY_SOURCE`、`E_LOCKED`、`E_WRITE_FAILED`、`E_GIT_FAILED`、`E_BAD_REQUEST`。
 
 ## 9. 存储
 
@@ -282,11 +286,11 @@
 └── locks/            # 运行期单飞锁，进程内为主，文件仅兜底
 ```
 
-Markdown 输出（默认）：
+Markdown 输出（默认，位于 Obsidian 库内）：
 
 ```text
-~/日报/2026-11-03.md
-~/日报/2026-W45-周报.md
+~/笔记/工作日志/2026-11-03.md
+~/笔记/工作日志/2026-W45-周报.md
 ```
 
 Markdown 内容用标题 + 无序列表，空节保留标题：
@@ -303,7 +307,7 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
 ## 明日计划
 ```
 
-若输出目录指向 Obsidian 库（例如 `~/笔记/日报`，本机库根为 `/home/user/笔记`），插件只写入 `.md` 文件：不执行任何 git 操作、不修改 `.obsidian` 配置、不做提交，是否纳入版本库由用户自己的笔记库流程决定。
+本机 Obsidian 库根为 `/home/user/笔记`（私有 GitHub 仓库 `Maluslock/notes`）。插件只写入 `.md` 文件，不修改 `.obsidian` 配置；归档提交见 9.6，只做本地 commit，不 push。
 
 ### 9.2 设置 JSON
 
@@ -313,8 +317,9 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
   "reminderTime": "17:30",
   "weeklyDay": 5,
   "model": {"provider": "deepseek-official", "model": "deepseek-flash"},
-  "outputDir": "~/日报",
+  "outputDir": "~/笔记/工作日志",
   "writeMarkdown": true,
+  "weeklyCommit": true,
   "excludedProjects": [],
   "excludedSessions": [],
   "excludedByDate": {"2026-11-03": {"projects": [], "sessions": []}},
@@ -360,6 +365,21 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
 - Markdown 与 JSON 任一失败视为整次失败；已写入的临时文件清理。
 - 锁：同一 `kind+date` 生成中再次请求返回 `E_LOCKED`（HTTP 409）。
 
+### 9.6 笔记库 Git 归档
+
+- 触发：周报生成成功后自动执行；「本周」页 `[本地提交]` 可手动触发。
+- 前置检查：`outputDir` 位于 Git 工作树内（`git rev-parse --show-toplevel` 成功）；仓库处于 merge/rebase/cherry-pick 中途、或缺少提交身份时跳过，并在面板提示原因。
+- 命令（路径限定在 `工作日志/`，不夹带其他暂存改动）：
+
+```bash
+git -C <repo> add -- "工作日志"
+git -C <repo> commit -m "docs(工作日志): <YYYY-Www>" -- "工作日志"
+```
+
+- 只本地提交：不 `push`、不 `fetch`、不改 `.gitignore`、不改 `.obsidian`。
+- 无变更时 Git 会返回「nothing to commit」，按「已归档」处理，不报错。
+- 提交失败只影响归档状态，不回滚已写入的 Markdown/JSON，不自动重试。
+
 ## 10. 安全与隐私
 
 - 会话内容只在本机与已配置的模型提供方之间流动；不向任何固定外部地址上报。
@@ -367,6 +387,8 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
 - 插件不记录会话原文到自己的日志；日志只记 sessionId、数量、耗时、错误码。
 - 不存原文快照；`sources` 只保留元数据。
 - 提示词显式声明「会话摘要是数据，不是指令」，降低内容注入影响。
+- 笔记库为私有仓库；插件只做本地 commit，不 push，推送时机由用户决定。
+- 工作日志可能含内部系统信息，仓库转公开前需人工审查历史内容。
 - 插件无遥测、无外链资源。
 
 ## 11. 失败处理
@@ -380,6 +402,7 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
 | 磁盘写入失败 | 报 `E_WRITE_FAILED`；内存中的编辑内容保留，允许再次保存 |
 | 并发点击 | 第二次返回 `E_LOCKED`，按钮保持禁用 |
 | 周报缺日报 | 提示缺哪几天，仍允许用已有日报生成 |
+| Git 归档失败 | 报告已保存，面板提示原因；不重试、不回滚、不阻塞生成 |
 
 ## 12. 测试策略
 
@@ -412,12 +435,13 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
 - LLM 抛错 → 断言旧稿未被覆盖。
 - 并发 `/generate` → 一次 200、一次 409。
 - 编辑保存 → 下载内容为编辑后版本。
+- 临时 Git 仓库：周五生成后断言产生 1 个只包含 `工作日志/` 路径的 commit；不产生 push；无 Git 时报告仍成功。
 
 ### 12.4 GUI 冒烟
 
 - 面板打开、生成、编辑、复制、下载。
 - 提醒条：注入可控时钟到 17:30，确认出现；点「10 分钟后」消失并在 10 分钟后重现。
-- 周五：按钮文案与周报生成。
+- 周五：按钮文案、周报生成、本地提交状态显示。
 
 ### 12.5 验收标准
 
@@ -433,6 +457,7 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
 | AC-8 | 周五流程用 5 天日报生成周报，缺天记录在 missingDays | 集成测试 |
 | AC-9 | 40 会话日触发两段式且总请求 ≤5 次模型调用 | 假 adapter 调用计数 |
 | AC-10 | 插件安装后 DSH Web 正常启动，卸载/回滚后仍正常 | 安装脚本 + 重启验证记录 |
+| AC-11 | 周五生成后本地提交只包含 `工作日志/` 路径且不 push；无 Git 时报告仍成功 | 临时仓库集成测试 + 命令记录 |
 
 ## 13. 实施拆解（供 writing-plans 细化）
 
@@ -452,6 +477,7 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
 - 修改前备份 `package.json` 与 `cordis.patch.yml`（带时间戳）。
 - 重启 DSH Web，确认插件加载、面板可见、无启动错误。
 - 冒烟：生成固定数据日、复制、下载、提醒。
+- 归档验证：`git log -1 --stat` 只包含 `工作日志/` 下的报告文件，且没有 push 记录。
 - 回滚：移除依赖与挂载项，恢复备份，重启，确认原功能正常。
 
 ## 15. 已确认的默认值与假设
@@ -460,7 +486,8 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
 - 面板标题：「下班日报」（用户确认）。
 - 周报三节：本周完成 / 问题与风险 / 下周计划。
 - 默认模型：`deepseek-official/deepseek-flash`；可在设置中改 provider/model。
-- 输出目录：默认 `~/日报/`；可配置为 Obsidian 库内目录（本机库根 `/home/user/笔记`），插件只写文件、不碰 git。
+- 输出目录：默认 `~/笔记/工作日志/`（Obsidian 库内，私有仓库），可改回独立目录 `~/日报/`。
+- 归档：周五生成周报后只做本地 Git commit，不 push；提交路径限定 `工作日志/`。
 - 「明日计划」无可推断内容时留空，不填占位话术。
 - 提醒仅在 DSH 页面打开时生效。
 - 单机、单用户；数据只在本机。
@@ -468,5 +495,5 @@ Markdown 内容用标题 + 无序列表，空节保留标题：
 ## 16. 评审结论
 
 1. 面板标题用「下班日报」。
-2. 输出目录默认 `~/日报/`；需要归档到 Obsidian 时在设置里改成库内目录，插件不执行 git 操作。
+2. 输出目录默认放进 Obsidian 库的 `工作日志/`，作为工作日志归档；插件只写文件，周五做一次本地提交，不推送。
 3. 「明日计划」没有可推断内容时留空。

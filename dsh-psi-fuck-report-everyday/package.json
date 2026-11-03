@@ -9,7 +9,12 @@
     "./package.json": "./package.json"
   },
   "files": ["dist", "client", "cordis.patch.yml"],
-  "scripts": { "build": "tsdown", "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:client": "node --test client/client.test.js"
+  },
   "dependencies": { "@deepseek-ai/schemastery": "^3.18.5" },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
@@ -29,6 +34,6 @@
   },
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "platform": "web", "inject": ["slots", "locale", "layout"] }
+    "client": { "platform": "web" }
   }
 }

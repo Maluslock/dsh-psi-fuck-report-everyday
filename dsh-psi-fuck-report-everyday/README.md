@@ -43,6 +43,10 @@ bash dsh-psi-fuck-report-everyday/scripts/install.sh <profile>  # 指定其他 p
 - 输出目录不在 Git 仓库内时，归档报告 `no-git`，Markdown/JSON 不受影响。
 - 手动「本地提交」在合并/变基/拣选进行中、或未配置 `user.name`/`user.email` 时会跳过并说明原因。
 
+## 归档状态
+
+周报归档结果（提交 hash / 未提交原因 / 时间）会写进周报 JSON，客户端从 `GET /state` 读取——刷新页面或切换周后，「本周」页仍显示真实的「已本地提交 \<短 hash\>」或「未提交（原因）」，`no-change` 按「已归档」展示。旧周报文件没有该字段时按「未提交」显示。
+
 ## 回滚
 
 ```bash
@@ -69,6 +73,6 @@ bash scripts/rollback.sh <stamp> [profile]
 | AC-8 | 周五 5 天日报生成周报、缺天进 missingDays | `tests/integration.test.ts` + `tests/http.test.ts:375` |
 | AC-9 | 40 会话触发两段式且 ≤5 次模型调用 | `tests/generate.test.ts:83`（calls=5）+ `tests/digest.test.ts` |
 | AC-10 | 安装/卸载后 DSH Web 正常 | `scripts/install.sh` / `scripts/rollback.sh`（bash -n 通过，备份/恢复带 stamp）+ 安装后重启记录 |
-| AC-11 | 本地提交只含工作日志路径、不 push；无 Git 时报告成功 | `tests/git-archive.test.ts:53`（路径/信息/不 push）+ `tests/integration.test.ts`（no-git 归档仍 200） |
+| AC-11 | 本地提交只含工作日志路径、不 push；无 Git 时报告成功 | `tests/git-archive.test.ts:53`（路径/信息/不 push）+ `tests/integration.test.ts`（no-git 归档仍 200）+ T11 复验 `tests/t11-verify.test.ts`（提交只含 `工作日志/`、bare origin 无 ref、archive 回写不破坏周报） |
 
-全量验证：`pnpm test`（13 文件 135 用例）、`pnpm typecheck`、`pnpm test:client`（18 用例）、`pnpm build` 全部通过。
+全量验证：`pnpm test`（14 文件 139 用例）、`pnpm typecheck`、`pnpm test:client`（19 用例）、`pnpm build` 全部通过（T11 复验 2026-11-03，见 tests/t11-verify.test.ts）。

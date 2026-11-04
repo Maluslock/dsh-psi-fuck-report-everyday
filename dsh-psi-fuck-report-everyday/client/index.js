@@ -1556,23 +1556,16 @@
         function scanCwds() {
           if (scanning.busy) return
           setScanning({ busy: true, notice: '', error: '' })
-          var dates = recentDates(new Date(), 7)
-          Promise.all(dates.map(function (key) {
-            return request('/sources?date=' + encodeURIComponent(key)).then(function (data) {
-              return (data.groups || []).map(function (group) {
-                return group.cwd
-              }).filter(function (cwd) {
-                return typeof cwd === 'string' && cwd.length > 0
-              })
-            }).catch(function () {
-              return []
-            })
-          })).then(function (lists) {
-            var found = []
-            lists.forEach(function (list) {
-              list.forEach(function (cwd) {
-                if (found.indexOf(cwd) < 0) found.push(cwd)
-              })
+          var timer = null
+          var timeout = new Promise(function (resolve, reject) {
+            timer = setTimeout(function () {
+              reject(new Error('扫描超时，请手动填写或稍后重试'))
+            }, 15000)
+          })
+          Promise.race([request('/workspaces?days=7'), timeout]).then(function (data) {
+            if (timer) clearTimeout(timer)
+            var found = (data && Array.isArray(data.cwds) ? data.cwds : []).filter(function (cwd) {
+              return typeof cwd === 'string' && cwd.length > 0
             })
             setDiscovered(function (previous) {
               var merged = previous.slice()
@@ -1586,7 +1579,8 @@
               notice: found.length ? '找到 ' + found.length + ' 个工作区' : '最近 7 天没有扫描到工作区',
               error: '',
             })
-          }).catch(function (failure) {
+          }, function (failure) {
+            if (timer) clearTimeout(timer)
             setScanning({ busy: false, notice: '', error: failure.message })
           })
         }

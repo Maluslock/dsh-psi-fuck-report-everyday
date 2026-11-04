@@ -271,6 +271,12 @@ export async function handleApi(request: ApiRequest, deps: ApiDeps): Promise<Api
       })
     }
 
+    if (request.method === 'GET' && path === '/workspaces') {
+      const requested = Number(url.searchParams.get('days'))
+      const days = Number.isFinite(requested) && requested > 0 ? Math.min(30, Math.floor(requested)) : 7
+      return json(200, { cwds: await deps.collector.listWorkspaces(days) })
+    }
+
     if (request.method === 'POST' && path === '/generate') {
       const body = (request.body ?? {}) as Record<string, unknown>
       const date = str(body.date) ?? localDateKey(now)

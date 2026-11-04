@@ -1,4 +1,4 @@
-import { dayWindow } from '../time.js'
+import { dayWindow, localDateKey } from '../time.js'
 import type { CollectedSession, Exclusion } from '../types.js'
 
 export interface SessionHeaderLike {
@@ -10,6 +10,8 @@ export interface SessionHeaderLike {
 }
 export interface SessionRecordLike {
   header: SessionHeaderLike
+  /** 宿主会话记录自带的 live 标记：仍在运行的长会话不受 createdAt 窗口限制。 */
+  live?: boolean
 }
 export interface SessionEventLike {
   type: string
@@ -141,6 +143,26 @@ export function normalizeSession(
 
 export class SessionCollector {
   constructor(private readonly query: SessionQueryLike) {}
+
+  /**
+   * 排除工作区选择器用的轻量扫描：只列一次会话元数据，不读会话正文。
+   *
+   * 设置页的「扫描最近 7 天」只需要 cwd，若逐天走 collect() 会把全部历史
+   * 会话读 7 遍；这里按 createdAt 窗口 + live 过滤，一次 listSessions 完成。
+   */
+  async listWorkspaces(days: number, signal?: AbortSignal): Promise<string[]> {
+    const span = Math.max(1, Math.min(30, Math.trunc(days)))
+    const start = dayWindow(localDateKey(new Date(Date.now() - (span - 1) * 86_400_000))).start
+    const records = await this.query.listSessions(signal)
+    const found = new Set<string>()
+    for (const record of records) {
+      const header = record.header
+      if ((header.delegationDepth ?? 0) > 0 || header.parentSession) continue
+      if (header.createdAt < start && record.live !== true) continue
+      if (typeof header.cwd === 'string' && header.cwd) found.add(header.cwd)
+    }
+    return [...found].sort()
+  }
 
   async collect(date: string, exclusion: Exclusion, signal?: AbortSignal): Promise<CollectedSession[]> {
     const { start, end } = dayWindow(date)

@@ -324,3 +324,35 @@ describe('SessionCollector.collect', () => {
     expect(sessions.map((s) => s.firstTime)).toEqual([at(8), at(15)])
   })
 })
+
+describe('listWorkspaces', () => {
+  it('lists unique cwds from recent and live sessions without reading logs', async () => {
+    const now = Date.now()
+    let reads = 0
+    const query: SessionQueryLike = {
+      async listSessions() {
+        return [
+          { header: header({ id: 'recent', cwd: '/repo/recent', createdAt: now - 86_400_000 }) },
+          {
+            header: header({ id: 'live-old', cwd: '/repo/live', createdAt: now - 30 * 86_400_000 }),
+            live: true,
+          },
+          { header: header({ id: 'old', cwd: '/repo/old', createdAt: now - 10 * 86_400_000 }) },
+          {
+            header: header({ id: 'sub', cwd: '/repo/sub', createdAt: now, delegationDepth: 1 }),
+          },
+          { header: header({ id: 'dup', cwd: '/repo/recent', createdAt: now }) },
+        ]
+      },
+      async readSession() {
+        reads += 1
+        throw new Error('must not read session logs')
+      },
+    }
+
+    const cwds = await new SessionCollector(query).listWorkspaces(7)
+
+    expect(cwds).toEqual(['/repo/live', '/repo/recent'])
+    expect(reads).toBe(0)
+  })
+})

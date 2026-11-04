@@ -173,6 +173,14 @@ describe('handleApi', () => {
     expect(parse<{ error: { code: string } }>(unknown).error.code).toBe('E_BAD_REQUEST')
   })
 
+  it('lists workspace cwds for the exclusion picker in one pass', async () => {
+    const harness = await makeHarness()
+    const response = await handleApi({ method: 'GET', url: `${API}/workspaces?days=7` }, harness.deps)
+
+    expect(response.status).toBe(200)
+    expect(parse<{ cwds: string[] }>(response).cwds).toEqual(['/work/alpha', '/work/beta'])
+  })
+
   it('generates a daily report, writes markdown, and exposes it through state', async () => {
     const harness = await makeHarness()
     const generated = await handleApi(

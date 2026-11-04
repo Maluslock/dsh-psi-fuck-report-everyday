@@ -109,6 +109,7 @@ function lastTodos(events: readonly SessionEventLike[]): Array<{ content: string
 export function normalizeSession(
   header: SessionHeaderLike,
   events: readonly SessionEventLike[],
+  titleOverride?: string,
 ): CollectedSession {
   const userTexts: string[] = []
   const assistantTexts: string[] = []
@@ -131,7 +132,8 @@ export function normalizeSession(
       toolCounts[event.data.name] = (toolCounts[event.data.name] ?? 0) + 1
     }
   }
-  const title = lastTitle(events)?.trim() || truncate(userTexts[0] ?? '未命名会话', 40)
+  const title =
+    titleOverride?.trim() || lastTitle(events)?.trim() || truncate(userTexts[0] ?? '未命名会话', 40)
   return {
     sessionId: header.id,
     cwd: typeof header.cwd === 'string' ? header.cwd : '',
@@ -197,7 +199,7 @@ export class SessionCollector {
       if ((header.delegationDepth ?? 0) > 0 || header.parentSession) continue
       const events = snapshot.events.filter((event) => event.time >= window.start && event.time <= window.end)
       if (events.length === 0) continue
-      const session = normalizeSession(header, events)
+      const session = normalizeSession(header, events, lastTitle(snapshot.events))
       if (session.messages > 0) collected.push(session)
     }
     return collected.sort((a, b) => a.firstTime - b.firstTime)

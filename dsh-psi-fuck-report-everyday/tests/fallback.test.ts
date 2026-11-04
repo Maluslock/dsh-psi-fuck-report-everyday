@@ -296,7 +296,13 @@ describe('windowed fallback reads', () => {
 describe('listSessionOptions', () => {
   it('reads only sessions written since the selected day', async () => {
     const root = await tempDir()
-    await writeSessionFile(root, 'w1', 's1', sessionFrames(HEADER, [USER_LINE]))
+    const oldTitle = {
+      type: 'session/title',
+      seq: 0,
+      time: Date.parse('2026-10-01T00:00:00+08:00'),
+      data: { title: '打板业务' },
+    }
+    await writeSessionFile(root, 'w1', 's1', sessionFrames(HEADER, [oldTitle, USER_LINE]))
     const stale = await writeSessionFile(
       root,
       'w2',
@@ -313,7 +319,7 @@ describe('listSessionOptions', () => {
     const sessions = await collector.listSessionOptions('2026-11-03')
 
     expect(sessions.map((session) => session.sessionId)).toEqual(['s1'])
-    expect(sessions[0]!.title).toBe('修复登录失败')
+    expect(sessions[0]!.title).toBe('打板业务')
     expect(sessions[0]!.firstTime).toBe(USER_LINE.time)
   })
 })

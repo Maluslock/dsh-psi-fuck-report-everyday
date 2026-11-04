@@ -1525,6 +1525,14 @@
         var scanPair = useState({ busy: false, notice: '', error: '' })
         var scanning = scanPair[0]
         var setScanning = scanPair[1]
+        var sessionOptionsPair = useState({
+          date: localDateKey(new Date()),
+          sessions: null,
+          loading: false,
+          error: '',
+        })
+        var sessionOptions = sessionOptionsPair[0]
+        var setSessionOptions = sessionOptionsPair[1]
 
         useEffect(function () {
           if (form === null && settings) setForm(settingsToForm(settings))
@@ -1543,6 +1551,17 @@
         }
         discovered.concat(linesOf(form.excludedProjects)).forEach(function (cwd) {
           if (cwd && cwdOptions.indexOf(cwd) < 0) cwdOptions.push(cwd)
+        })
+
+        var excludedIds = linesOf(form.excludedSessions)
+        var loadedIds = {}
+        if (Array.isArray(sessionOptions.sessions)) {
+          sessionOptions.sessions.forEach(function (item) {
+            if (item && item.id) loadedIds[item.id] = true
+          })
+        }
+        var orphanExcluded = excludedIds.filter(function (id) {
+          return !loadedIds[id]
         })
 
         function toggleCwd(cwd) {
@@ -1583,6 +1602,41 @@
             if (timer) clearTimeout(timer)
             setScanning({ busy: false, notice: '', error: failure.message })
           })
+        }
+
+        function loadSessions() {
+          if (sessionOptions.loading || !sessionOptions.date) return
+          var requestedDate = sessionOptions.date
+          setSessionOptions(Object.assign({}, sessionOptions, { loading: true, error: '' }))
+          var timer = null
+          var timeout = new Promise(function (resolve, reject) {
+            timer = setTimeout(function () {
+              reject(new Error('加载超时，请稍后重试'))
+            }, 30000)
+          })
+          Promise.race([
+            request('/session-options?date=' + encodeURIComponent(requestedDate)),
+            timeout,
+          ]).then(function (data) {
+            if (timer) clearTimeout(timer)
+            setSessionOptions({
+              date: requestedDate,
+              sessions: Array.isArray(data.sessions) ? data.sessions : [],
+              loading: false,
+              error: '',
+            })
+          }, function (failure) {
+            if (timer) clearTimeout(timer)
+            setSessionOptions({ date: requestedDate, sessions: null, loading: false, error: failure.message })
+          })
+        }
+
+        function toggleSession(id) {
+          var current = linesOf(form.excludedSessions)
+          var index = current.indexOf(id)
+          if (index >= 0) current.splice(index, 1)
+          else current.push(id)
+          update({ excludedSessions: current.join('\n') })
         }
 
         function update(patch) {
@@ -1708,16 +1762,74 @@
                 },
               }),
               h('span', { style: STYLES.hint }, '这些工作区的会话不会进入日报；采集时按前缀匹配。')),
-            h('label', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-              h('span', { style: { fontWeight: 600 } }, '已排除的会话'),
-              h('textarea', {
-                style: Object.assign({}, STYLES.textarea, { minHeight: 48 }),
-                value: form.excludedSessions,
-                placeholder: '每行一个 sessionId；删掉一行并保存即可恢复',
-                onChange: function (event) {
-                  update({ excludedSessions: event.target.value })
-                },
-              }))),
+            h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+              h('div', { style: STYLES.row },
+                h('span', { style: { fontWeight: 600 } }, '排除的会话'),
+                h('input', {
+                  type: 'date',
+                  style: Object.assign({}, STYLES.input, { width: 160 }),
+                  value: sessionOptions.date,
+                  disabled: sessionOptions.loading,
+                  onChange: function (event) {
+                    setSessionOptions({
+                      date: event.target.value,
+                      sessions: null,
+                      loading: false,
+                      error: '',
+                    })
+                  },
+                }),
+                h('button', {
+                  type: 'button',
+                  style: STYLES.button,
+                  disabled: sessionOptions.loading || !sessionOptions.date,
+                  onClick: loadSessions,
+                }, sessionOptions.loading ? '加载中…' : '加载当天会话')),
+              h('span', { style: STYLES.hint }, '按标题和时间勾选，勾上即排除，取消即恢复；不用填写 Session ID。'),
+              sessionOptions.error ? h('span', { style: STYLES.error }, sessionOptions.error) : null,
+              sessionOptions.sessions === null
+                ? h('span', { style: STYLES.hint }, '选好日期后点「加载当天会话」。')
+                : (sessionOptions.sessions.length === 0
+                  ? h('span', { style: STYLES.hint }, '这一天没有可选的会话。')
+                  : h('div', {
+                    style: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                      maxHeight: 220,
+                      overflowY: 'auto',
+                    },
+                  }, sessionOptions.sessions.map(function (session) {
+                    var checked = linesOf(form.excludedSessions).indexOf(session.id) >= 0
+                    var project = String(session.cwd || '').split('/').filter(Boolean).pop() || session.cwd || ''
+                    return h('label', { key: session.id, style: STYLES.sessionRow },
+                      h('input', {
+                        type: 'checkbox',
+                        checked: checked,
+                        onChange: function () {
+                          toggleSession(session.id)
+                        },
+                      }),
+                      h('span', { style: { flex: 1, wordBreak: 'break-all' } },
+                        session.title || '(无标题会话)'),
+                      h('span', { style: STYLES.hint },
+                        formatHHmm(session.firstTime || 0) + ' · ' + session.messages + ' 条 · ' + project))
+                  }))),
+              orphanExcluded.length && sessionOptions.sessions !== null
+                ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' } },
+                  h('span', { style: STYLES.hint }, '其他已排除：'),
+                  orphanExcluded.map(function (id) {
+                    return h('button', {
+                      key: id,
+                      type: 'button',
+                      style: Object.assign({}, STYLES.button, { padding: '2px 6px', fontSize: 12 }),
+                      title: id,
+                      onClick: function () {
+                        toggleSession(id)
+                      },
+                    }, id.slice(0, 10) + '… 移除')
+                  }))
+                : null)),
           h('div', { style: STYLES.row },
             h('button', {
               type: 'submit',

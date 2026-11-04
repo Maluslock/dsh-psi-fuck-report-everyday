@@ -1,5 +1,9 @@
 import { dayWindow, localDateKey } from '../time.js'
-import { scanWorkspaceCwds } from './fallback.js'
+import {
+  discoverSessionEntries,
+  readSessionFile,
+  scanWorkspaceCwds,
+} from './fallback.js'
 import type { CollectedSession, Exclusion } from '../types.js'
 
 export interface SessionHeaderLike {
@@ -167,6 +171,36 @@ export class SessionCollector {
       if (typeof header.cwd === 'string' && header.cwd) found.add(header.cwd)
     }
     return [...found].sort()
+  }
+
+  /**
+   * 会话选择器专用：只读「文件在所选日期之后写过」的会话，避免像 collect()
+   * 那样把全部历史会话读一遍。今天通常只有个位数候选文件。
+   */
+  async listSessionOptions(date: string): Promise<CollectedSession[]> {
+    if (!this.scanRoot) {
+      return this.collect(date, { projects: new Set(), sessions: new Set() })
+    }
+    const window = dayWindow(date)
+    const entries = (await discoverSessionEntries(this.scanRoot)).filter(
+      (entry) => entry.mtimeMs >= window.start,
+    )
+    const collected: CollectedSession[] = []
+    for (const entry of entries) {
+      let snapshot
+      try {
+        snapshot = await readSessionFile(entry.file)
+      } catch {
+        continue
+      }
+      const header = snapshot.header
+      if ((header.delegationDepth ?? 0) > 0 || header.parentSession) continue
+      const events = snapshot.events.filter((event) => event.time >= window.start && event.time <= window.end)
+      if (events.length === 0) continue
+      const session = normalizeSession(header, events)
+      if (session.messages > 0) collected.push(session)
+    }
+    return collected.sort((a, b) => a.firstTime - b.firstTime)
   }
 
   async collect(date: string, exclusion: Exclusion, signal?: AbortSignal): Promise<CollectedSession[]> {

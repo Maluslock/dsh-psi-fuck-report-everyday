@@ -292,3 +292,28 @@ describe('windowed fallback reads', () => {
     expect(sessions[0]!.userTexts).toEqual(['修复登录失败'])
   })
 })
+
+describe('listSessionOptions', () => {
+  it('reads only sessions written since the selected day', async () => {
+    const root = await tempDir()
+    await writeSessionFile(root, 'w1', 's1', sessionFrames(HEADER, [USER_LINE]))
+    const stale = await writeSessionFile(
+      root,
+      'w2',
+      's2',
+      sessionFrames({ ...HEADER, id: 's2', cwd: '/repo/old' }, [USER_LINE]),
+    )
+    const old = new Date('2026-10-01T00:00:00Z')
+    await utimes(stale, old, old)
+
+    const collector = new SessionCollector(
+      { listSessions: async () => [], readSession: async () => ({ session: HEADER, events: [] }) },
+      root,
+    )
+    const sessions = await collector.listSessionOptions('2026-11-03')
+
+    expect(sessions.map((session) => session.sessionId)).toEqual(['s1'])
+    expect(sessions[0]!.title).toBe('修复登录失败')
+    expect(sessions[0]!.firstTime).toBe(USER_LINE.time)
+  })
+})

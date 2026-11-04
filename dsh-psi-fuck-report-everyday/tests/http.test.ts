@@ -181,6 +181,25 @@ describe('handleApi', () => {
     expect(parse<{ cwds: string[] }>(response).cwds).toEqual(['/work/alpha', '/work/beta'])
   })
 
+  it('exposes sessions with titles and times for the exclusion picker', async () => {
+    const harness = await makeHarness()
+    const response = await handleApi(
+      { method: 'GET', url: `${API}/session-options?date=${DATE}` },
+      harness.deps,
+    )
+
+    expect(response.status).toBe(200)
+    const payload = parse<{
+      date: string
+      sessions: Array<{ id: string; title: string; firstTime: number; messages: number }>
+    }>(response)
+    expect(payload.date).toBe(DATE)
+    expect(payload.sessions.map((session) => session.id)).toEqual(['s1', 's2'])
+    expect(payload.sessions.map((session) => session.title)).toEqual(['修复登录', '整理文档'])
+    expect(payload.sessions[0]!.firstTime).toBe(at('09:00'))
+    expect(payload.sessions[0]!.messages).toBe(2)
+  })
+
   it('generates a daily report, writes markdown, and exposes it through state', async () => {
     const harness = await makeHarness()
     const generated = await handleApi(

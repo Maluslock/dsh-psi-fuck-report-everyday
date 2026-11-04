@@ -277,6 +277,23 @@ export async function handleApi(request: ApiRequest, deps: ApiDeps): Promise<Api
       return json(200, { cwds: await deps.collector.listWorkspaces(days) })
     }
 
+    // 设置页的会话选择器：返回指定日期的会话清单（含已被排除的），不读正文之外的字段。
+    if (request.method === 'GET' && path === '/session-options') {
+      const date = str(url.searchParams.get('date')) ?? localDateKey(now)
+      const sessions = await deps.collector.listSessionOptions(date)
+      return json(200, {
+        date,
+        sessions: sessions.map((session) => ({
+          id: session.sessionId,
+          title: session.title,
+          cwd: session.cwd,
+          firstTime: session.firstTime,
+          lastTime: session.lastTime,
+          messages: session.messages,
+        })),
+      })
+    }
+
     if (request.method === 'POST' && path === '/generate') {
       const body = (request.body ?? {}) as Record<string, unknown>
       const date = str(body.date) ?? localDateKey(now)

@@ -8,6 +8,7 @@ import {
   discoverSessionFiles,
   readSessionFile,
   readSessionHeader,
+  scanWorkspaceCwds,
   splitZstdFrames,
 } from '../src/host/sessions/fallback'
 
@@ -75,6 +76,25 @@ describe('splitZstdFrames', () => {
   it('rejects a truncated frame', () => {
     const frame = zstdCompressSync(Buffer.alloc(4096, 'x'))
     expect(() => splitZstdFrames(frame.subarray(0, 5))).toThrow(/E_TRUNCATED_FRAME/)
+  })
+})
+
+describe('scanWorkspaceCwds', () => {
+  it('returns cwds of sessions touched in the window and skips stale mtimes', async () => {
+    const root = await tempDir()
+    await writeSessionFile(root, 'w1', 's1', sessionFrames(HEADER, []))
+    const stale = await writeSessionFile(
+      root,
+      'w2',
+      's2',
+      sessionFrames({ ...HEADER, id: 's2', cwd: '/repo/old' }, []),
+    )
+    const old = new Date('2026-10-01T00:00:00Z')
+    await utimes(stale, old, old)
+
+    const cwds = await scanWorkspaceCwds(root, Date.now() - 7 * 86_400_000)
+
+    expect(cwds).toEqual(['/repo/alpha'])
   })
 })
 

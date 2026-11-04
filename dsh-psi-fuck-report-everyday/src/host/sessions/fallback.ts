@@ -251,6 +251,24 @@ export async function discoverSessionEntries(root: string): Promise<SessionFileE
   return found
 }
 
+/**
+ * 扫描窗口内仍在写入的会话（按文件 mtime），只读会话头取 cwd。
+ * 用于「排除工作区」选择器：避免把创建较早但最近仍在活动的会话漏掉。
+ */
+export async function scanWorkspaceCwds(root: string, start: number): Promise<string[]> {
+  const entries = (await discoverSessionEntries(root)).filter((entry) => entry.mtimeMs >= start)
+  const found = new Set<string>()
+  for (const entry of entries) {
+    try {
+      const header = await readSessionHeader(entry.file)
+      if (typeof header.cwd === 'string' && header.cwd) found.add(header.cwd)
+    } catch {
+      // 损坏的会话文件不影响其余结果
+    }
+  }
+  return [...found].sort()
+}
+
 export async function discoverSessionFiles(root: string): Promise<string[]> {
   return (await discoverSessionEntries(root)).map((entry) => entry.file)
 }

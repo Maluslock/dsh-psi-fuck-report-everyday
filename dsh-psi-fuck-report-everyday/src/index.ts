@@ -73,8 +73,10 @@ export function apply(ctx: Context): void {
   const settings = new SettingsStore(dataDir)
   // sessionQuery 是可选服务：用 ctx.get 读取不触发 inject 校验；没有宿主服务时回退到直接读文件。
   const sessionQuery = ctx.get('sessionQuery') as SessionQueryLike | undefined
+  const sessionsRoot = join(dshHome(), 'sessions')
   const collector = new SessionCollector(
-    sessionQuery ?? new FallbackSessionQuery(join(dshHome(), 'sessions')),
+    sessionQuery ?? new FallbackSessionQuery(sessionsRoot),
+    sessionsRoot,
   )
   const deps: ApiDeps = {
     settings,

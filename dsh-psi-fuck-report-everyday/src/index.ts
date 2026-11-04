@@ -1,11 +1,12 @@
 import type { Context } from '@deepseek-ai/cordis'
+// 仅加载 Context.llm 的类型扩展；运行期没有副作用（type-only import 会被擦除）。
+import type {} from '@deepseek-ai/dsh-llm'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ApiDeps, StoreLike } from './host/http/api.js'
 import { registerHttpApi } from './host/http/server.js'
 import { FallbackSessionQuery } from './host/sessions/fallback.js'
 import { SessionCollector, type SessionQueryLike } from './host/sessions/collector.js'
-import type { LlmLike } from './host/report/llm.js'
 import { KeyedLock, ReportStore, SettingsStore, expandHome } from './host/store.js'
 import type { DailyReport, WeeklyReport } from './host/types.js'
 
@@ -70,19 +71,16 @@ export function healthPayload() {
 export function apply(ctx: Context): void {
   const dataDir = join(dshHome(), 'profiles', 'web', 'plugin-data', name)
   const settings = new SettingsStore(dataDir)
-  // sessionQuery 是可选服务：没有宿主服务时回退到直接读 ~/.dsh/sessions 文件。
-  const services = ctx as Context & {
-    llm?: LlmLike
-    sessionQuery?: SessionQueryLike
-  }
+  // sessionQuery 是可选服务：用 ctx.get 读取不触发 inject 校验；没有宿主服务时回退到直接读文件。
+  const sessionQuery = ctx.get('sessionQuery') as SessionQueryLike | undefined
   const collector = new SessionCollector(
-    services.sessionQuery ?? new FallbackSessionQuery(join(dshHome(), 'sessions')),
+    sessionQuery ?? new FallbackSessionQuery(join(dshHome(), 'sessions')),
   )
   const deps: ApiDeps = {
     settings,
     store: new DynamicStore(settings, dataDir),
     collector,
-    llm: services.llm!,
+    llm: ctx.llm,
     lock: new KeyedLock(),
   }
   registerHttpApi(ctx, deps)

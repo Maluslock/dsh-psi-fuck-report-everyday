@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, normalize } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { isPluginError, type PluginError } from '../src/host/errors'
 import { copyText, dailyMarkdown, weeklyMarkdown } from '../src/host/markdown'
@@ -320,12 +320,17 @@ describe('SettingsStore', () => {
 })
 
 describe('expandHome', () => {
-  it('expands tilde paths only at the start', () => {
-    expect(expandHome('~')).toBe(homedir())
-    expect(expandHome('~/笔记/工作日志')).toBe(join(homedir(), '笔记/工作日志'))
-    expect(expandHome('/absolute/path')).toBe('/absolute/path')
-    expect(expandHome('relative/path')).toBe('relative/path')
-    expect(expandHome('~/trailing/')).toBe(join(homedir(), 'trailing/'))
+  it('expands ~, env vars, quotes and relative paths portably', () => {
+    expect(expandHome('~')).toBe(normalize(homedir()))
+    expect(expandHome('~/笔记/工作日志')).toBe(normalize(join(homedir(), '笔记/工作日志')))
+    expect(expandHome('  "~/日报"  ')).toBe(normalize(join(homedir(), '日报')))
+    expect(expandHome('$HOME/日报')).toBe(normalize(join(homedir(), '日报')))
+    expect(expandHome('${HOME}/日报')).toBe(normalize(join(homedir(), '日报')))
+    expect(expandHome('%USERPROFILE%/日报')).toBe(normalize(join(homedir(), '日报')))
+    expect(expandHome('/absolute/path')).toBe(normalize('/absolute/path'))
+    expect(expandHome('relative/path')).toBe(normalize(join(homedir(), 'relative/path')))
+    expect(expandHome('~/trailing/')).toBe(normalize(join(homedir(), 'trailing/')))
+    expect(expandHome('   ')).toBe('')
   })
 })
 

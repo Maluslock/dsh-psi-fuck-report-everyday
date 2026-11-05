@@ -265,10 +265,13 @@
         })
       }
 
+      var IS_WINDOWS = typeof navigator !== 'undefined' && /^Win/i.test(navigator.platform || '')
+
       function joinDisplayPath(dir, name) {
         var base = String(dir || '').trim()
         if (!base) return name
-        return base.replace(/\/+$/, '') + '/' + name
+        var sep = base.indexOf('\\') >= 0 && base.indexOf('/') < 0 ? '\\' : '/'
+        return base.replace(/[\\/]+$/, '') + sep + name
       }
 
       function shortHash(hash) {
@@ -1507,6 +1510,7 @@
         var store = props.store
         var snap = props.snap
         var settings = snap.state ? snap.state.settings : null
+        var resolvedOutputDir = snap.state ? snap.state.outputDirResolved : ''
         var formPair = useState(null)
         var form = formPair[0]
         var setForm = formPair[1]
@@ -1695,8 +1699,11 @@
             h(Field, {
               label: '输出目录',
               value: form.outputDir,
-              placeholder: '~/笔记/工作日志',
-              hint: '支持 ~ 展开；不存在时宿主会创建',
+              placeholder: IS_WINDOWS ? 'C:\\Users\\你\\日报' : '~/日报',
+              hint: '支持 ~、$HOME、%USERPROFILE% 与绝对路径；相对路径按用户目录解析'
+                + (resolvedOutputDir && form && settings && form.outputDir === settings.outputDir
+                  ? ' · 实际：' + resolvedOutputDir
+                  : ''),
               onChange: function (value) {
                 update({ outputDir: value })
               },

@@ -1,16 +1,38 @@
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { PluginError, isPluginError } from './errors.js'
 import { dailyMarkdown, weeklyMarkdown } from './markdown.js'
 import { DEFAULT_SETTINGS, mergeSettings } from './settings.js'
 import type { DailyReport, Sections, Settings, WeeklyArchive, WeeklyReport } from './types.js'
 
-/** 把设置里的 `~` 展开成用户目录；只处理开头的 `~` / `~/`，其余原样返回。 */
-export function expandHome(path: string): string {
-  if (path === '~') return homedir()
-  if (path.startsWith('~/')) return join(homedir(), path.slice(2))
-  return path
+/**
+ * 把设置里的路径展开成当前平台的绝对路径：
+ * - `~`、`~/x`、`~\x` 展开到用户目录；
+ * - `$HOME`、`${HOME}`、`%USERPROFILE%`、`%HOME%` 展开到用户目录；
+ * - 去掉 Windows「复制为路径」带上的成对引号；
+ * - 相对路径按用户目录解析，避免依赖进程 cwd（Windows/macOS/Linux 行为一致）。
+ */
+export function expandHome(input: string): string {
+  let path = String(input ?? '').trim()
+  if (
+    (path.startsWith('"') && path.endsWith('"')) ||
+    (path.startsWith("'") && path.endsWith("'"))
+  ) {
+    path = path.slice(1, -1).trim()
+  }
+  if (!path) return path
+  path = path
+    .replace(/\$\{HOME\}/g, homedir())
+    .replace(/\$HOME/g, homedir())
+    .replace(/%USERPROFILE%/gi, homedir())
+    .replace(/%HOME%/gi, homedir())
+  if (path === '~') return normalize(homedir())
+  if (path.startsWith('~/') || path.startsWith('~\\')) {
+    return normalize(join(homedir(), path.slice(2)))
+  }
+  if (isAbsolute(path)) return normalize(path)
+  return normalize(resolve(homedir(), path))
 }
 
 /** 先写同目录临时文件并 fsync，再 rename 覆盖目标，避免进程中断留下半截 JSON。 */

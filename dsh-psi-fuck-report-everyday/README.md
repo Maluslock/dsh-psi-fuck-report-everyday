@@ -26,7 +26,7 @@ bash dsh-psi-fuck-report-everyday/scripts/install.sh <profile>  # 指定其他 p
 | 设置 | 默认值 | 说明 |
 | --- | --- | --- |
 | `reminderTime` | `17:30` | 每天提醒生成日报的时间（HH:MM，页面打开时才会弹提醒条） |
-| `outputDir` | `~/笔记/工作日志` | 日报/周报 Markdown 输出目录，也是周报自动提交的范围 |
+| `outputDir` | `~/笔记/工作日志` | 日报/周报 Markdown 输出目录，也是周报自动提交的范围；可改成任意绝对路径 |
 | `model` | `deepseek-official/deepseek-flash` | 汇总用模型 |
 | `writeMarkdown` | `true` | 是否在 `outputDir` 写 Markdown（JSON 数据始终落盘） |
 | `weeklyCommit` | `true` | 周报生成后是否自动做本地 Git 提交 |
@@ -34,6 +34,15 @@ bash dsh-psi-fuck-report-everyday/scripts/install.sh <profile>  # 指定其他 p
 | 排除日期 | 无 | 在面板里把某天排除出会话汇总与周报统计 |
 
 数据位置：`~/.dsh/profiles/web/plugin-data/dsh-psi-fuck-report-everyday/`（`daily/`、`weekly/`、`settings.json`）。
+
+`outputDir` 跨平台写法：
+
+| 平台 | 示例 |
+| --- | --- |
+| Linux / macOS | `~/笔记/工作日志`、`/Users/you/Documents/日报` |
+| Windows | `C:\Users\you\日报`、`%USERPROFILE%\日报`（正斜杠/反斜杠均可） |
+
+支持 `~`、`$HOME`、`${HOME}`、`%USERPROFILE%`、`%HOME%`，以及带引号的「复制为路径」。相对路径按用户目录解析，不依赖进程 cwd；目录不存在时会自动创建。
 
 ## 已知限制
 

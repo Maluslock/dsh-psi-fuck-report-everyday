@@ -247,6 +247,8 @@ export async function handleApi(request: ApiRequest, deps: ApiDeps): Promise<Api
         // 顶层单独给出归档状态，客户端刷新时无需从 weekly 里猜。
         archive: weekly?.archive ?? null,
         outputDir: settings.outputDir,
+        // 让设置页直接显示跨平台展开后的真实落盘路径（`~`/环境变量/相对路径都已解析）。
+        outputDirResolved: expandHome(settings.outputDir),
       })
     }
 

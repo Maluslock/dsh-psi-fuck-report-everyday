@@ -14,11 +14,51 @@ export const GROUP_LIMITS: ParseLimits = { perSection: 5, itemChars: 40 }
 /** 路径、文件名、命令片段：模型输出里出现就整条丢弃。 */
 const PATH_LIKE = /(^|[\s（(])(\/[\w@./-]+|[A-Za-z]:\\[^\s]+|[\w.-]+\.(?:ts|tsx|js|jsx|json|md|py|go|java|sh|yml|yaml|toml|lock))(\s|$|[，。；、])/
 
-/** 去掉可能存在的 Markdown 代码围栏，返回 JSON 正文。 */
+/** 去掉可能存在的 Markdown 代码围栏，返回正文。 */
 export function stripFence(raw: string): string {
   const trimmed = raw.trim()
   const fenced = /^```[A-Za-z]*\s*\n?([\s\S]*?)\n?```$/.exec(trimmed)
   return (fenced?.[1] ?? trimmed).trim()
+}
+
+/**
+ * 从模型输出里截出第一个完整的 JSON 对象。
+ * 兼容三种常见跑偏：正文前有「好的，这是日报：」、JSON 在代码围栏里、
+ * JSON 后面又跟了解释。截取时按字符串/转义规则配对花括号，避免把值里的
+ * `}` 当成对象结尾。
+ */
+export function extractJsonObject(raw: string): string {
+  const text = stripFence(raw)
+  try {
+    JSON.parse(text)
+    return text
+  } catch {
+    // 不是纯 JSON，继续截取。
+  }
+  const start = text.indexOf('{')
+  if (start < 0) return text
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') {
+      inString = true
+    } else if (char === '{') {
+      depth += 1
+    } else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(start, i + 1)
+    }
+  }
+  // 没有闭合：返回从 `{` 到末尾，交给 JSON.parse 报出可诊断的错误。
+  return text.slice(start)
 }
 
 function cleanSection(raw: unknown, limits: ParseLimits): string[] {
@@ -40,7 +80,7 @@ function cleanSection(raw: unknown, limits: ParseLimits): string[] {
  * 非数组节、非法 JSON 都会抛错，由调用方决定是否重试。
  */
 export function parseSections(raw: string, kind: 'daily' | 'weekly', limits: ParseLimits): Sections {
-  const parsed = JSON.parse(stripFence(raw)) as Record<string, unknown>
+  const parsed = JSON.parse(extractJsonObject(raw)) as Record<string, unknown>
   if (!parsed || typeof parsed !== 'object') throw new Error('response must be an object')
   const done = cleanSection(parsed.done, limits)
   const risks = cleanSection(parsed.risks, limits)
@@ -52,7 +92,7 @@ export function parseSections(raw: string, kind: 'daily' | 'weekly', limits: Par
 
 /** 解析分组摘要 {"points":[...]}。 */
 export function parsePoints(raw: string, limits: ParseLimits = GROUP_LIMITS): string[] {
-  const parsed = JSON.parse(stripFence(raw)) as Record<string, unknown>
+  const parsed = JSON.parse(extractJsonObject(raw)) as Record<string, unknown>
   if (!parsed || typeof parsed !== 'object') throw new Error('response must be an object')
   return cleanSection(parsed.points, limits)
 }

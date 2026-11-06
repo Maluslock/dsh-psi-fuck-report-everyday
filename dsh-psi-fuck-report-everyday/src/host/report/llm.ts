@@ -34,7 +34,8 @@ interface ChunkLike {
   }
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000
+/** 推理型模型（如 deepseek-v4-flash）会先花时间输出思考，30s 容易误杀。 */
+const DEFAULT_TIMEOUT_MS = 180_000
 
 function finishFailure(reason: ChunkLike['reason']): string | undefined {
   if (!reason || typeof reason !== 'object') return undefined
@@ -44,7 +45,7 @@ function finishFailure(reason: ChunkLike['reason']): string | undefined {
 
 /**
  * 以非流式语义调用一次模型：收集 text-delta，遇到 finish error/aborted 抛
- * E_LLM_UNAVAILABLE；默认 30s 超时；空文本抛 E_LLM_BAD_OUTPUT。
+ * E_LLM_UNAVAILABLE；默认 180s 超时（推理模型思考慢）；空文本抛 E_LLM_BAD_OUTPUT。
  */
 export async function callModel(llm: LlmLike, input: CallModelInput): Promise<string> {
   if (input.signal?.aborted) {
@@ -57,6 +58,7 @@ export async function callModel(llm: LlmLike, input: CallModelInput): Promise<st
 
   let text = ''
   let failure: string | undefined
+  let finishKind: string | undefined
   try {
     input.signal?.addEventListener('abort', onAbort, { once: true })
     for await (const chunk of llm.stream({
@@ -70,7 +72,10 @@ export async function callModel(llm: LlmLike, input: CallModelInput): Promise<st
       if (!chunk || typeof chunk !== 'object') continue
       const item = chunk as ChunkLike
       if (item.type === 'text-delta' && typeof item.text === 'string') text += item.text
-      if (item.type === 'finish') failure = finishFailure(item.reason) ?? failure
+      if (item.type === 'finish') {
+        finishKind = item.reason?.kind ?? finishKind
+        failure = finishFailure(item.reason) ?? failure
+      }
     }
   } catch (error) {
     throw new PluginError('E_LLM_UNAVAILABLE', '模型调用失败或超时', String(error))
@@ -80,6 +85,11 @@ export async function callModel(llm: LlmLike, input: CallModelInput): Promise<st
   }
 
   if (failure) throw new PluginError('E_LLM_UNAVAILABLE', '模型返回错误', failure)
-  if (!text.trim()) throw new PluginError('E_LLM_BAD_OUTPUT', '模型返回空内容')
+  if (!text.trim()) {
+    throw new PluginError('E_LLM_BAD_OUTPUT', '模型返回空内容', {
+      finishKind,
+      maxTokens: input.maxTokens,
+    })
+  }
   return text
 }

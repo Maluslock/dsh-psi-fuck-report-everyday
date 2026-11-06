@@ -33,6 +33,8 @@ bash dsh-psi-fuck-report-everyday/scripts/install.sh <profile>  # 指定其他 p
 | `weeklyDay` | `5` | 周几提示生成周报（5=周五） |
 | 排除日期 | 无 | 在面板里把某天排除出会话汇总与周报统计 |
 
+> 推理模型（如 `deepseek-v4-flash`）的思考 token 也计入输出预算，出稿通常需要 1–2 分钟；插件已把单次预算放宽到 4000 token、超时 180 秒，并在重试时翻倍。追求速度可改用 `deepseek-flash`。
+
 数据位置：`~/.dsh/profiles/web/plugin-data/dsh-psi-fuck-report-everyday/`（`daily/`、`weekly/`、`settings.json`）。
 
 `outputDir` 跨平台写法：

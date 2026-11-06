@@ -47,6 +47,14 @@ describe('parseSections', () => {
     expect(() => parseSections('not json', 'daily', DAILY_LIMITS)).toThrow()
   })
 
+  it('extracts JSON even when the model adds prose, fences or trailing text', () => {
+    const prose = '好的，这是今天的日报：\n```json\n{"done":["修复登录"],"risks":[],"tomorrow":[]}\n```\n以上。'
+    expect(parseSections(prose, 'daily', DAILY_LIMITS).done).toEqual(['修复登录'])
+
+    const tricky = '说明：{"done":["处理含 } 的文本"],"risks":[],"tomorrow":[]} 收尾'
+    expect(parseSections(tricky, 'daily', DAILY_LIMITS).done).toEqual(['处理含 } 的文本'])
+  })
+
   it('filters path-like and file-name items while keeping normal ones', () => {
     const raw = JSON.stringify({
       done: ['修复 /home/user/app/src/index.ts 的编译错误', '修复登录', '更新 notes.md', '打开 C:\\work\\app\\main.ts 调试'],

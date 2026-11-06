@@ -14,9 +14,12 @@ import {
 
 const GROUP_SIZE = 8
 const MAX_GROUPS = 4
-const GROUP_MAX_TOKENS = 600
-const DAILY_MAX_TOKENS = 600
-const WEEKLY_MAX_TOKENS = 800
+// 推理型模型（deepseek-v4-flash 等）的 maxTokens 包含思考部分，预算太小会把
+// 最终 JSON 截断。报告本身只有几百字，给足余量比省 token 更重要。
+const GROUP_MAX_TOKENS = 2_000
+const DAILY_MAX_TOKENS = 4_000
+const WEEKLY_MAX_TOKENS = 5_000
+const RETRY_TOKEN_CAP = 8_000
 const RAW_OUTPUT_KEEP = 500
 
 export interface GenerateDailyInput {
@@ -113,7 +116,8 @@ async function parseWithRetry(
     system,
     user: `${user}${RETRY_SUFFIX}`,
     model: input.model,
-    maxTokens,
+    // 首次若因截断失败，重试给双倍预算，避免同样的长度上限再撞一次。
+    maxTokens: Math.min(maxTokens * 2, RETRY_TOKEN_CAP),
     signal: input.signal,
     timeoutMs: input.timeoutMs,
   })

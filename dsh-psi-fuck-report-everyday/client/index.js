@@ -1691,7 +1691,7 @@
               label: '模型',
               value: form.model,
               placeholder: 'deepseek-official/deepseek-flash',
-              hint: 'provider/model 两段，用 / 分隔',
+              hint: 'provider/model 两段，用 / 分隔；推理模型会先思考，出稿约 1–2 分钟',
               onChange: function (value) {
                 update({ model: value })
               },

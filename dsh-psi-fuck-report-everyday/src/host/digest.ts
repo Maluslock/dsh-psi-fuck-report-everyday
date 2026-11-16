@@ -2,9 +2,9 @@ import { pad2 } from './time.js'
 import type { CollectedSession, SessionDigest } from './types.js'
 
 /** 单条会话摘要的硬上限（按 code point 计） */
-export const MAX_SESSION_DIGEST_CHARS = 800
+export const MAX_SESSION_DIGEST_CHARS = 1200
 /** 单次发送允许的摘要总长（按 code point 计） */
-export const MAX_DIGEST_BUNDLE_CHARS = 16000
+export const MAX_DIGEST_BUNDLE_CHARS = 20000
 /** 超过该会话数就改走两阶段摘要 */
 export const MAX_SINGLE_STAGE_SESSIONS = 32
 
@@ -60,7 +60,7 @@ function cleanTexts(values: string[], limit: number): string[] {
 }
 
 /**
- * 把一条采集到的会话压成不超过 800 字的摘要。
+ * 把一条采集到的会话压成不超过 1200 字的摘要。
  * 只保留标题、项目、时间跨度、用户诉求、助手结论、工具计数与未完成事项，
  * 不保留完整对话与工具输出。
  */

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_DIGEST_BUNDLE_CHARS,
+  MAX_SESSION_DIGEST_CHARS,
   buildDigestBundle,
   buildSessionDigest,
   formatSpan,
@@ -100,7 +102,7 @@ describe('buildSessionDigest', () => {
     expect(digest.text.split('工具：')[1]?.split('×').length).toBe(9)
   })
 
-  it('caps every digest at 800 code points', () => {
+  it('caps every digest at the per-session limit', () => {
     const huge = buildSessionDigest(
       session({
         userTexts: Array.from({ length: 10 }, () => '一'.repeat(200)),
@@ -108,7 +110,7 @@ describe('buildSessionDigest', () => {
         todos: Array.from({ length: 8 }, () => ({ content: '三'.repeat(60), status: 'pending' })),
       }),
     )
-    expect([...huge.text].length).toBe(800)
+    expect([...huge.text].length).toBe(MAX_SESSION_DIGEST_CHARS)
   })
 })
 
@@ -127,12 +129,13 @@ describe('buildDigestBundle', () => {
     expect(buildDigestBundle(many(33)).needsTwoStage).toBe(true)
   })
 
-  it('triggers two-stage when total length exceeds 16000 code points', () => {
+  it('triggers two-stage when total length exceeds the bundle limit', () => {
     const longSessions = (count: number) =>
-      Array.from({ length: count }, (_, i) => session({ sessionId: `l${i}`, assistantTexts: ['二'.repeat(800)] }))
-    const bundle = buildDigestBundle(longSessions(21))
-    expect(bundle.digests.every((d) => [...d.text].length === 800)).toBe(true)
-    expect(bundle.totalChars).toBeGreaterThan(16000)
+      Array.from({ length: count }, (_, i) => session({ sessionId: `l${i}`, assistantTexts: ['二'.repeat(MAX_SESSION_DIGEST_CHARS)] }))
+    const count = Math.ceil(MAX_DIGEST_BUNDLE_CHARS / MAX_SESSION_DIGEST_CHARS) + 1
+    const bundle = buildDigestBundle(longSessions(count))
+    expect(bundle.digests.every((d) => [...d.text].length === MAX_SESSION_DIGEST_CHARS)).toBe(true)
+    expect(bundle.totalChars).toBeGreaterThan(MAX_DIGEST_BUNDLE_CHARS)
     expect(bundle.needsTwoStage).toBe(true)
   })
 

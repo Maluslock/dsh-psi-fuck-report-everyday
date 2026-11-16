@@ -127,7 +127,7 @@ async function makeHarness(options: {
   const deps: ApiDeps = {
     settings,
     store,
-    collector: new SessionCollector(options.query ?? defaultQuery()),
+    collector: new SessionCollector(options.query ?? defaultQuery(), undefined, () => FIXED_NOW.getTime()),
     llm: options.llm ?? recordingLlm(DAILY_JSON).llm,
     lock: new KeyedLock(),
     now: () => new Date(FIXED_NOW),

@@ -112,7 +112,7 @@ describe('generateDaily', () => {
   })
 
   it('triggers two-stage compression on total digest length', async () => {
-    const longText = 'x'.repeat(9000)
+    const longText = 'x'.repeat(12_000)
     const { llm, calls } = fakeLlm(['{"points":["压缩后要点"]}', JSON.stringify(dailySections())])
 
     const result = await generateDaily({

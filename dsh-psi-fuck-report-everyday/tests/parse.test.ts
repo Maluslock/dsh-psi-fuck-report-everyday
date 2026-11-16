@@ -27,17 +27,17 @@ describe('parseSections', () => {
   })
 
   it('drops empty items and clips each section to its limit', () => {
-    const raw = JSON.stringify({ done: ['', '   ', 'a', 'b', 'c', 'd'], risks: ['  '], tomorrow: [] })
+    const raw = JSON.stringify({ done: ['', '   ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'], risks: ['  '], tomorrow: [] })
     const parsed = parseSections(raw, 'daily', DAILY_LIMITS)
-    expect(parsed.done).toEqual(['a', 'b', 'c'])
+    expect(parsed.done).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     expect(parsed.risks).toEqual([])
   })
 
-  it('truncates oversized items to 40 code points without splitting surrogate pairs', () => {
-    const emoji = '😀'.repeat(80)
+  it('truncates oversized items to the daily limit without splitting surrogate pairs', () => {
+    const emoji = '😀'.repeat(120)
     const parsed = parseSections(JSON.stringify({ done: [emoji], risks: [], tomorrow: [] }), 'daily', DAILY_LIMITS)
-    expect([...parsed.done[0]!]).toHaveLength(40)
-    expect(parsed.done[0]).toBe('😀'.repeat(40))
+    expect([...parsed.done[0]!]).toHaveLength(DAILY_LIMITS.itemChars)
+    expect(parsed.done[0]).toBe('😀'.repeat(DAILY_LIMITS.itemChars))
   })
 
   it('rejects non-array or missing sections', () => {
@@ -69,21 +69,21 @@ describe('parseSections', () => {
     expect(parsed).toEqual({ done: ['本周完成'], risks: ['无'], next: [] })
   })
 
-  it('clips weekly items to 50 code points and four entries', () => {
-    const item = '周'.repeat(80)
-    const raw = JSON.stringify({ done: [item, 'b', 'c', 'd', 'e'], risks: [], next: [] })
+  it('clips weekly items to the weekly limit', () => {
+    const item = '周'.repeat(120)
+    const raw = JSON.stringify({ done: [item, 'b', 'c', 'd', 'e', 'f', 'g', 'h'], risks: [], next: [] })
     const parsed = parseSections(raw, 'weekly', WEEKLY_LIMITS)
-    expect(parsed.done).toHaveLength(4)
-    expect([...parsed.done[0]!]).toHaveLength(50)
+    expect(parsed.done).toHaveLength(WEEKLY_LIMITS.perSection)
+    expect([...parsed.done[0]!]).toHaveLength(WEEKLY_LIMITS.itemChars)
   })
 })
 
 describe('parsePoints', () => {
-  it('parses group points from fenced JSON and caps at five', () => {
+  it('parses group points from fenced JSON and caps at its limit', () => {
     const raw = '```json\n{"points":["产出 A","问题 B","下一步 C"]}\n```'
     expect(parsePoints(raw)).toEqual(['产出 A', '问题 B', '下一步 C'])
 
-    const many = JSON.stringify({ points: ['1', '2', '3', '4', '5', '6'] })
+    const many = JSON.stringify({ points: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'] })
     expect(parsePoints(many)).toHaveLength(GROUP_LIMITS.perSection)
   })
 

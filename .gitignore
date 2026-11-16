@@ -2,3 +2,6 @@
 .smoke*/
 .verify/
 .diag*/
+
+.work/
+reports/

@@ -7,9 +7,9 @@ export interface ParseLimits {
   itemChars: number
 }
 
-export const DAILY_LIMITS: ParseLimits = { perSection: 3, itemChars: 40 }
-export const WEEKLY_LIMITS: ParseLimits = { perSection: 4, itemChars: 50 }
-export const GROUP_LIMITS: ParseLimits = { perSection: 5, itemChars: 40 }
+export const DAILY_LIMITS: ParseLimits = { perSection: 7, itemChars: 60 }
+export const WEEKLY_LIMITS: ParseLimits = { perSection: 6, itemChars: 70 }
+export const GROUP_LIMITS: ParseLimits = { perSection: 8, itemChars: 60 }
 
 /** 路径、文件名、命令片段：模型输出里出现就整条丢弃。 */
 const PATH_LIKE = /(^|[\s（(])(\/[\w@./-]+|[A-Za-z]:\\[^\s]+|[\w.-]+\.(?:ts|tsx|js|jsx|json|md|py|go|java|sh|yml|yaml|toml|lock))(\s|$|[，。；、])/

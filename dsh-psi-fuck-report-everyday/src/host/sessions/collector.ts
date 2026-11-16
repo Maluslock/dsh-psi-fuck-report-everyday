@@ -152,6 +152,7 @@ export class SessionCollector {
   constructor(
     private readonly query: SessionQueryLike,
     private readonly scanRoot?: string,
+    private readonly now: () => number = Date.now,
   ) {}
 
   /**
@@ -162,7 +163,7 @@ export class SessionCollector {
    */
   async listWorkspaces(days: number, signal?: AbortSignal): Promise<string[]> {
     const span = Math.max(1, Math.min(30, Math.trunc(days)))
-    const start = dayWindow(localDateKey(new Date(Date.now() - (span - 1) * 86_400_000))).start
+    const start = dayWindow(localDateKey(new Date(this.now() - (span - 1) * 86_400_000))).start
     if (this.scanRoot) return scanWorkspaceCwds(this.scanRoot, start)
     const records = await this.query.listSessions(signal)
     const found = new Set<string>()

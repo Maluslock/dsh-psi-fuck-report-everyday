@@ -2,7 +2,7 @@
 
 DSH「下班日报」插件：每天自动汇总当日会话生成三节日报（今日完成 / 风险与阻塞 / 明日计划），周五自动汇总周内日报生成本周周报，并把 Markdown 写入你的工作日志目录。
 
-- 日报/周报每节 0–3 条、每条 ≤40 字，第一人称、可直接粘贴。
+- 日报完成/风险各 1–7 条、明日计划 0–5 条，周报每节 2–6 条，每条 ≤60/70 字；第一人称、可直接粘贴。
 - 所有送入模型的会话摘要先经本地脱敏（密钥、token、键值对、URL 内嵌凭证），路径/文件名/命令片段按规则整条丢弃。
 - 周报生成后可自动在本地 Git 仓库提交工作日志（不 push）。
 
@@ -74,7 +74,7 @@ bash scripts/rollback.sh <stamp> [profile]
 
 | AC | 验收项 | 证据 |
 | --- | --- | --- |
-| AC-1 | 三节日报限长（完成/风险 1–3 条、明日计划 0–3 条，每条 ≤40 字） | `tests/integration.test.ts`（逐条码点断言）+ `tests/parse.test.ts` |
+| AC-1 | 三节日报限长（完成/风险 1–7 条、明日计划 0–5 条，每条 ≤60 字） | `tests/integration.test.ts`（逐条码点断言）+ `tests/parse.test.ts` |
 | AC-2 | 复制文本与面板内容一致、纯文本格式 | `tests/store.test.ts:306`（copyText 纯文本格式）+ `client/index.js:348`（剪贴板写入）+ GUI 冒烟 |
 | AC-3 | Markdown 与当前草稿一致 | `tests/integration.test.ts`（draft 后 download === 文件内容）+ `tests/http.test.ts` |
 | AC-4 | 请求体不出现 fixture 密钥 | `tests/integration.test.ts`（捕获模型调用，断言无 `sk-abc…` 且含 `sk-***`）+ `tests/redact.test.ts` |

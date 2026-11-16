@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { handleApi, type ApiDeps, type ApiResponse } from '../src/host/http/api'
 import type { LlmLike, LlmStreamOptions } from '../src/host/report/llm'
 import { WEEKLY_SYSTEM } from '../src/host/report/prompts'
+import { DAILY_LIMITS } from '../src/host/report/parse'
 import { SessionCollector } from '../src/host/sessions/collector'
 import { mergeSettings } from '../src/host/settings'
 import { KeyedLock, ReportStore, SettingsStore } from '../src/host/store'
@@ -158,13 +159,13 @@ describe('integration: report flow', () => {
     expect(dailyPayload.daily.coverage).toMatchObject({ sessions: 2, messages: 3 })
     expect(dailyPayload.daily.sources.map((source) => source.sessionId)).toEqual(['s1', 's2'])
 
-    // AC-1：三节各 1–3 / 0–3 条，每条 ≤40 个码点。
+    // AC-1：三节各 1–7 / 0–5 条，每条不超过日报上限。
     const sections = dailyPayload.daily.sections
     expect(sections.done).toEqual(['修复登录'])
     expect(sections.risks).toEqual(['无'])
     expect(sections.tomorrow).toEqual(['继续完善测试'])
     for (const item of [...sections.done, ...sections.risks, ...(sections.tomorrow ?? [])]) {
-      expect([...item].length).toBeLessThanOrEqual(40)
+      expect([...item].length).toBeLessThanOrEqual(DAILY_LIMITS.itemChars)
     }
 
     // AC-4：进入模型的请求体不含密钥原文，且能见到脱敏占位符。

@@ -95,6 +95,13 @@ function recordingLlm(...responses: string[]): RecordingLlm {
   const llm: LlmLike = {
     async *stream(options: LlmStreamOptions) {
       calls.push(options)
+      const reviewUser = String(options.messages[0]?.content[0]?.text ?? '')
+      if (String(options.system ?? '').includes('审稿人')) {
+        const count = (reviewUser.match(/^\[\d+\]/gm) ?? []).length
+        yield { type: 'text-delta', index: 0, text: JSON.stringify({ keep: Array.from({ length: count }, (_, i) => i) }) }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+        return
+      }
       const text = responses[Math.min(calls.length - 1, responses.length - 1)] ?? ''
       yield { type: 'text-delta', index: 0, text }
       yield { type: 'finish', reason: { kind: 'stop' } }
@@ -237,10 +244,10 @@ describe('integration: report flow', () => {
     expect(weeklyMarkdown).toContain('- 完成登录修复')
 
     // 周报只汇总已落盘日报：第二次模型调用的用户消息来自已编辑的日报。
-    expect(recorder.calls).toHaveLength(2)
-    expect(recorder.calls[1]?.system).toBe(WEEKLY_SYSTEM)
-    expect(recorder.calls[1]?.messages[0]?.content[0]?.text).toContain('完成：改过')
-    expect(recorder.calls[1]?.messages[0]?.content[0]?.text).not.toContain(SECRET)
+    expect(recorder.calls).toHaveLength(4)
+    expect(recorder.calls[2]?.system).toBe(WEEKLY_SYSTEM)
+    expect(recorder.calls[2]?.messages[0]?.content[0]?.text).toContain('完成：改过')
+    expect(recorder.calls[2]?.messages[0]?.content[0]?.text).not.toContain(SECRET)
   })
 
   it('模型失败时不覆盖旧稿，JSON 与 Markdown 原样保留（AC-6）', async () => {

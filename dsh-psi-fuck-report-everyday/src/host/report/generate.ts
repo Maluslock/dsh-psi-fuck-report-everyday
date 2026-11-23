@@ -3,6 +3,7 @@ import { PluginError } from '../errors.js'
 import type { Coverage, DailyReport, ModelRef, Sections, SessionDigest, WeeklyReport } from '../types.js'
 import { callModel, type LlmLike } from './llm.js'
 import { DAILY_LIMITS, GROUP_LIMITS, WEEKLY_LIMITS, parsePoints, parseSections } from './parse.js'
+import { reviewSections } from './review.js'
 import { filterDailies, filterSections } from './scope.js'
 import {
   DAILY_SYSTEM,
@@ -203,7 +204,11 @@ export async function generateDaily(input: GenerateDailyInput): Promise<Generate
 
   coverage = { ...coverage, truncated: coverage.truncated || truncated }
   const user = buildDailyUserMessage({ date: input.date, coverage, digests: promptDigests })
-  const sections = filterSections(await parseWithRetry(input, DAILY_SYSTEM, user, 'daily', DAILY_MAX_TOKENS))
+  const filtered = filterSections(await parseWithRetry(input, DAILY_SYSTEM, user, 'daily', DAILY_MAX_TOKENS))
+  const sections = await reviewSections(input.llm, input.model, filtered, {
+    signal: input.signal,
+    timeoutMs: input.timeoutMs,
+  })
   return { sections, coverage }
 }
 
@@ -215,7 +220,11 @@ export async function generateWeekly(input: GenerateWeeklyInput): Promise<Weekly
 
   const safeDailies = filterDailies(input.dailies)
   const user = buildWeeklyUserMessage({ week: input.week, dailies: safeDailies })
-  const sections = filterSections(await parseWithRetry(input, WEEKLY_SYSTEM, user, 'weekly', WEEKLY_MAX_TOKENS))
+  const filtered = filterSections(await parseWithRetry(input, WEEKLY_SYSTEM, user, 'weekly', WEEKLY_MAX_TOKENS))
+  const sections = await reviewSections(input.llm, input.model, filtered, {
+    signal: input.signal,
+    timeoutMs: input.timeoutMs,
+  })
   return {
     version: 1,
     week: input.week,

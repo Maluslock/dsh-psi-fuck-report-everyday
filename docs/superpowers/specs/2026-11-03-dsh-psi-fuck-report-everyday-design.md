@@ -99,6 +99,13 @@
 - 单个会话（按 sessionId）。
 - 永久排除项存 `settings.json` 的 `excludedProjects` / `excludedSessions`；按天排除存 `settings.json` 的 `excludedByDate`，只保留最近 7 天。
 
+内容范围（2026-11-23 追加，老板可见）：
+
+- 只写公司资产、公司项目、公司系统上的工作；个人设备、家庭网络、个人账号与订阅不写。
+- 提示词明确列出排除项（NAS、家庭宽带/断电、Tailscale/Headscale/NetBird/OpenVPN/ZeroTier/frp 等个人 VPN、个人电脑手机、软路由），不确定不写，不得模糊绕过。
+- 生成后先做确定性关键词过滤，再由审稿模型逐条判定工作相关性：只保留工作成果、明确风险、可执行计划；问候、寒暄、情绪、闲聊、个人事务、无结论讨论、重复与空泛条目删除。
+- 审稿失败时不出稿（fail-closed），不返回未经审稿的草稿；错误为 `E_REVIEW_FAILED`。
+
 读取顺序：
 
 1. 优先 `ctx.sessionQuery` 按时间范围查询，取日志快照事件。

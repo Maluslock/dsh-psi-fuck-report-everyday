@@ -452,7 +452,7 @@ export async function handleApi(request: ApiRequest, deps: ApiDeps): Promise<Api
     if (isPluginError(error)) {
       const status = error.code === 'E_LOCKED'
         ? 409
-        : error.code === 'E_LLM_UNAVAILABLE' || error.code === 'E_LLM_BAD_OUTPUT'
+        : error.code === 'E_LLM_UNAVAILABLE' || error.code === 'E_LLM_BAD_OUTPUT' || error.code === 'E_REVIEW_FAILED'
           ? 502
           : error.code === 'E_WRITE_FAILED' || error.code === 'E_GIT_FAILED'
             ? 500

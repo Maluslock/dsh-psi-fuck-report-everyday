@@ -3,6 +3,7 @@ export type ErrorCode =
   | 'E_NO_SESSIONS'
   | 'E_LLM_UNAVAILABLE'
   | 'E_LLM_BAD_OUTPUT'
+  | 'E_REVIEW_FAILED'
   | 'E_NO_WEEKLY_SOURCE'
   | 'E_LOCKED'
   | 'E_WRITE_FAILED'

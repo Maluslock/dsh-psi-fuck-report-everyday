@@ -19,6 +19,13 @@ function fakeLlm(responses: string[]): { llm: LlmLike; calls: RecordedCall[] } {
         system: options.system,
         user: String(options.messages[0]?.content[0]?.text ?? ''),
       })
+      const reviewUser = String(options.messages[0]?.content[0]?.text ?? '')
+      if (String(options.system ?? '').includes('审稿人')) {
+        const count = (reviewUser.match(/^\[\d+\]/gm) ?? []).length
+        yield { type: 'text-delta', index: 0, text: JSON.stringify({ keep: Array.from({ length: count }, (_, i) => i) }) }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+        return
+      }
       const response = responses[Math.min(calls.length - 1, responses.length - 1)] ?? ''
       yield { type: 'text-delta', index: 0, text: response }
       yield { type: 'finish', reason: { kind: 'stop' } }
@@ -71,7 +78,7 @@ describe('generateDaily', () => {
       coverage: coverage({ sessions: 2, messages: 5 }),
     })
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0]?.system).toBe(DAILY_SYSTEM)
     expect(calls[0]?.user).toContain('日期：2026-11-03')
     expect(calls[0]?.user).toContain('覆盖：2 个会话，5 条消息，分 1 组。')
@@ -122,7 +129,7 @@ describe('generateDaily', () => {
       coverage: coverage({ sessions: 40, messages: 400 }),
     })
 
-    expect(calls).toHaveLength(5)
+    expect(calls).toHaveLength(6)
     expect(calls.slice(0, 4).every((call) => call.system === GROUP_SYSTEM)).toBe(true)
     expect(calls[0]?.user).toContain('以下是 8 个会话摘要')
     expect(calls[3]?.user).toContain('另有 8 个会话未展开。')
@@ -146,7 +153,7 @@ describe('generateDaily', () => {
       coverage: coverage({ sessions: 2, messages: 7 }),
     })
 
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(3)
     expect(calls[0]?.system).toBe(GROUP_SYSTEM)
     expect(calls[1]?.user).toContain('压缩后要点')
     expect(result.coverage.groups).toBe(1)
@@ -164,7 +171,7 @@ describe('generateDaily', () => {
       coverage: coverage({ sessions: 40, messages: 820 }),
     })
 
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(3)
     expect(calls[0]?.system).toBe(GROUP_SYSTEM)
     expect(calls[1]?.system).toBe(DAILY_SYSTEM)
     expect(calls[1]?.user).toContain('摘要 39')
@@ -183,7 +190,7 @@ describe('generateDaily', () => {
       coverage: coverage(),
     })
 
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(3)
     expect(calls[1]?.user).toContain('只输出 JSON')
     expect(result.sections.done).toEqual(['完成一件事'])
   })
@@ -225,7 +232,7 @@ describe('generateWeekly', () => {
       missingDays: ['2026-11-06'],
     })
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0]?.system).toBe(WEEKLY_SYSTEM)
     expect(calls[0]?.user).toContain('周：2026-W45')
     expect(calls[0]?.user).toContain('日期：2026-11-03')

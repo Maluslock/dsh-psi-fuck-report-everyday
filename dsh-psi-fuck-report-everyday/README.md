@@ -4,6 +4,7 @@ DSH「下班日报」插件：每天自动汇总当日会话生成三节日报�
 
 - 日报完成/风险各 1–7 条、明日计划 0–5 条，周报每节 2–6 条，每条 ≤60/70 字；第一人称、可直接粘贴。
 - 所有送入模型的会话摘要先经本地脱敏（密钥、token、键值对、URL 内嵌凭证），路径/文件名/命令片段按规则整条丢弃。
+- 生成后再做一次逐条审稿：只保留能对应公司项目/系统的工作、风险与计划，闲聊、情绪、个人内容一律删除；审稿失败时不出稿（fail-closed）。
 - 周报生成后可自动在本地 Git 仓库提交工作日志（不 push）。
 
 ## 安装
@@ -82,7 +83,7 @@ bash scripts/rollback.sh <stamp> [profile]
 | AC-6 | LLM 失败不覆盖旧稿 | `tests/integration.test.ts`（失败后草稿/Markdown 原样）+ `tests/http.test.ts:253` |
 | AC-7 | 提醒在设定时间 ±30 秒内出现 | `client/client.test.js`（nextReminder 状态机，18 用例）+ GUI 冒烟 |
 | AC-8 | 周五 5 天日报生成周报、缺天进 missingDays | `tests/integration.test.ts` + `tests/http.test.ts:375` |
-| AC-9 | 40 会话触发两段式且 ≤5 次模型调用 | `tests/generate.test.ts:83`（calls=5）+ `tests/digest.test.ts` |
+| AC-9 | 40 会话触发两段式且 ≤6 次模型调用（4 组摘要 + 1 次成稿 + 1 次审稿） | `tests/generate.test.ts:83`（calls=6）+ `tests/digest.test.ts` |
 | AC-10 | 安装/卸载后 DSH Web 正常 | `scripts/install.sh` / `scripts/rollback.sh`（bash -n 通过，备份/恢复带 stamp）+ 安装后重启记录 |
 | AC-11 | 本地提交只含工作日志路径、不 push；无 Git 时报告成功 | `tests/git-archive.test.ts:53`（路径/信息/不 push）+ `tests/integration.test.ts`（no-git 归档仍 200）+ T11 复验 `tests/t11-verify.test.ts`（提交只含 `工作日志/`、bare origin 无 ref、archive 回写不破坏周报） |
 

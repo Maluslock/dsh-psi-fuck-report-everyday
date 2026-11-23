@@ -75,6 +75,13 @@ function recordingLlm(...responses: string[]): RecordingLlm {
   const llm: LlmLike = {
     async *stream(options: LlmStreamOptions) {
       calls.push(options)
+      const reviewUser = String(options.messages[0]?.content[0]?.text ?? '')
+      if (String(options.system ?? '').includes('审稿人')) {
+        const count = (reviewUser.match(/^\[\d+\]/gm) ?? []).length
+        yield { type: 'text-delta', index: 0, text: JSON.stringify({ keep: Array.from({ length: count }, (_, i) => i) }) }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+        return
+      }
       const text = responses[Math.min(calls.length - 1, responses.length - 1)] ?? ''
       yield { type: 'text-delta', index: 0, text }
       yield { type: 'finish', reason: { kind: 'stop' } }

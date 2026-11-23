@@ -80,6 +80,29 @@ describe('generateDaily', () => {
     expect(result.coverage).toEqual({ sessions: 2, messages: 5, truncated: false, groups: 1 })
   })
 
+  it('drops personal-device items from the generated daily report', async () => {
+    const sections = dailySections({
+      done: ['修复登录', 'NAS 省电评估'],
+      risks: ['家庭断电'],
+      tomorrow: ['配置 Tailscale', '发版'],
+    })
+    const { llm } = fakeLlm([JSON.stringify(sections)])
+
+    const result = await generateDaily({
+      llm,
+      model,
+      date: '2026-11-03',
+      digests: [digest(1)],
+      coverage: coverage(),
+    })
+
+    expect(result.sections).toEqual({
+      done: ['修复登录'],
+      risks: [],
+      tomorrow: ['发版'],
+    })
+  })
+
   it('compresses 40 sessions into four groups plus one daily call', async () => {
     const groupResponse = '{"points":["产出 A","问题 B"]}'
     const { llm, calls } = fakeLlm([
@@ -218,6 +241,21 @@ describe('generateWeekly', () => {
     })
     expect(report.sections).toEqual({ done: ['本周完成'], risks: ['无'], next: ['下周计划'] })
     expect(Number.isNaN(Date.parse(report.generatedAt))).toBe(false)
+  })
+
+  it('filters personal items before and after weekly aggregation', async () => {
+    const { llm, calls } = fakeLlm([
+      JSON.stringify({ done: ['修复登录', '补充测试', 'NAS 备份'], risks: [], next: ['发版'] }),
+    ])
+    const dailies = [
+      dailyReport('2026-11-03', dailySections({ done: ['修复登录', 'NAS 备份'], risks: ['家庭断电'], tomorrow: ['发版'] })),
+    ]
+
+    const report = await generateWeekly({ llm, model, week: '2026-W45', dailies, missingDays: [] })
+
+    expect(calls[0]?.user).not.toContain('NAS')
+    expect(calls[0]?.user).not.toContain('家庭断电')
+    expect(report.sections).toEqual({ done: ['修复登录', '补充测试'], risks: [], next: ['发版'] })
   })
 
   it('throws E_NO_WEEKLY_SOURCE when no daily exists', async () => {

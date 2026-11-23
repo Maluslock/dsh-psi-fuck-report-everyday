@@ -3,6 +3,7 @@ import { PluginError } from '../errors.js'
 import type { Coverage, DailyReport, ModelRef, Sections, SessionDigest, WeeklyReport } from '../types.js'
 import { callModel, type LlmLike } from './llm.js'
 import { DAILY_LIMITS, GROUP_LIMITS, WEEKLY_LIMITS, parsePoints, parseSections } from './parse.js'
+import { filterDailies, filterSections } from './scope.js'
 import {
   DAILY_SYSTEM,
   GROUP_SYSTEM,
@@ -202,7 +203,7 @@ export async function generateDaily(input: GenerateDailyInput): Promise<Generate
 
   coverage = { ...coverage, truncated: coverage.truncated || truncated }
   const user = buildDailyUserMessage({ date: input.date, coverage, digests: promptDigests })
-  const sections = await parseWithRetry(input, DAILY_SYSTEM, user, 'daily', DAILY_MAX_TOKENS)
+  const sections = filterSections(await parseWithRetry(input, DAILY_SYSTEM, user, 'daily', DAILY_MAX_TOKENS))
   return { sections, coverage }
 }
 
@@ -212,14 +213,15 @@ export async function generateWeekly(input: GenerateWeeklyInput): Promise<Weekly
     throw new PluginError('E_NO_WEEKLY_SOURCE', '本周还没有日报可以汇总')
   }
 
-  const user = buildWeeklyUserMessage({ week: input.week, dailies: input.dailies })
-  const sections = await parseWithRetry(input, WEEKLY_SYSTEM, user, 'weekly', WEEKLY_MAX_TOKENS)
+  const safeDailies = filterDailies(input.dailies)
+  const user = buildWeeklyUserMessage({ week: input.week, dailies: safeDailies })
+  const sections = filterSections(await parseWithRetry(input, WEEKLY_SYSTEM, user, 'weekly', WEEKLY_MAX_TOKENS))
   return {
     version: 1,
     week: input.week,
     generatedAt: new Date().toISOString(),
     model: input.model,
-    days: input.dailies.map((daily) => daily.date).sort(),
+    days: safeDailies.map((daily) => daily.date).sort(),
     missingDays: [...input.missingDays].sort(),
     sections,
     editedAt: null,

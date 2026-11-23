@@ -25,8 +25,8 @@ export const REVIEW_SYSTEM = `你是公司日报/周报的严格审稿人。输�
 只输出严格 JSON：{"keep":[0,2,5]}，数组里是保留条目的序号；没有可保留条目时输出 {"keep":[]}。
 不要输出解释、Markdown 或代码围栏。`
 
-const REVIEW_MAX_TOKENS = 1_500
-const REVIEW_TIMEOUT_MS = 90_000
+const REVIEW_MAX_TOKENS = 6_000
+const REVIEW_TIMEOUT_MS = 180_000
 const RAW_KEEP = 500
 
 interface FlatItem {
